@@ -5,6 +5,8 @@ import { BREAK_TYPES, getBreakType, getAllBreakTypes } from '../utils/breakTypes
 import axios from 'axios';
 import { API_BASE_URL } from '../utils/constants';
 import { useTimezone } from '../hooks/useTimezone.jsx';
+import { useTheme } from '../hooks/useTheme.jsx';
+import { hexToRgba } from '../utils/hexToRgb';
 
 /**
  * Break Editor Component - Edit break details inline
@@ -22,6 +24,7 @@ const BreakEditor = ({ breakItem, onSave, onDelete, onCancel, onReset, events = 
   const [showCustom, setShowCustom] = useState(false);
   const [hasBeenEdited, setHasBeenEdited] = useState(false);
   const { timezone } = useTimezone();
+  const { themeColors } = useTheme();
 
   const breakType = getBreakType(activity);
   const allBreakTypes = getAllBreakTypes();
@@ -304,14 +307,26 @@ const BreakEditor = ({ breakItem, onSave, onDelete, onCancel, onReset, events = 
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="bg-gradient-to-r from-ocean-500 to-ocean-600 text-white p-4 rounded-t-xl flex items-center justify-between">
+        <div 
+          className="text-white p-4 rounded-t-xl flex items-center justify-between"
+          style={themeColors ? {
+            background: `linear-gradient(to right, ${themeColors.primary}, ${themeColors.primaryDark})`
+          } : {
+            background: 'linear-gradient(to right, #0ea5e9, #0284c7)'
+          }}
+        >
           <div>
             <h3 className="text-xl font-bold">{breakItem?.id ? 'Edit Break' : 'Add Break'}</h3>
-            <p className="text-ocean-100 text-xs mt-1">{formatTime(time)}</p>
+            <p 
+              className="text-xs mt-1 opacity-90"
+              style={{ color: 'rgba(255, 255, 255, 0.9)' }}
+            >
+              {formatTime(time)}
+            </p>
           </div>
           <button
             onClick={onCancel}
-            className="text-white hover:text-ocean-100 transition-colors"
+            className="text-white hover:opacity-75 transition-opacity"
           >
             <IoClose size={20} />
           </button>
@@ -324,7 +339,10 @@ const BreakEditor = ({ breakItem, onSave, onDelete, onCancel, onReset, events = 
             <div className="space-y-4">
               {/* Time Adjustment - Most Important, at top */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label 
+                  className="block text-sm font-medium mb-2"
+                  style={themeColors ? { color: themeColors.text } : {}}
+                >
                   Time
                 </label>
                 <input
@@ -340,7 +358,20 @@ const BreakEditor = ({ breakItem, onSave, onDelete, onCancel, onReset, events = 
                       onTimeChange(breakItem.id, newTime);
                     }
                   }}
-                  className="w-full px-3 py-2 text-sm border-2 border-gray-200 rounded-lg focus:border-ocean-500 focus:outline-none"
+                  className="w-full px-3 py-2 text-sm border-2 border-gray-200 rounded-lg focus:outline-none transition-colors"
+                  style={{
+                    borderColor: themeColors ? hexToRgba(themeColors.primary, 0.3) : '#bae6fd',
+                  }}
+                  onFocus={(e) => {
+                    if (themeColors) {
+                      e.target.style.borderColor = themeColors.primary;
+                    }
+                  }}
+                  onBlur={(e) => {
+                    if (themeColors) {
+                      e.target.style.borderColor = hexToRgba(themeColors.primary, 0.3);
+                    }
+                  }}
                 />
                 <p className="text-xs text-gray-500 mt-1">
                   Time shown in your selected timezone: {timezone}
@@ -351,7 +382,10 @@ const BreakEditor = ({ breakItem, onSave, onDelete, onCancel, onReset, events = 
 
               {/* Break Type Selection - Compact */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label 
+                  className="block text-sm font-medium mb-2"
+                  style={themeColors ? { color: themeColors.text } : {}}
+                >
                   Break Type
                 </label>
                 <div className="grid grid-cols-3 gap-2 max-h-32 overflow-y-auto">
@@ -365,12 +399,21 @@ const BreakEditor = ({ breakItem, onSave, onDelete, onCancel, onReset, events = 
                       }}
                       className={`p-2 rounded-lg border-2 transition-all ${
                         activity === type.id && !showCustom
-                          ? 'border-ocean-500 bg-ocean-50'
+                          ? ''
                           : 'border-gray-200 hover:border-gray-300'
                       }`}
+                      style={activity === type.id && !showCustom && themeColors ? {
+                        borderColor: themeColors.primary,
+                        backgroundColor: hexToRgba(themeColors.primaryLight, 0.2),
+                      } : {}}
                     >
                       <div className="text-xl mb-1">{type.icon}</div>
-                      <div className="text-xs font-medium text-gray-700 truncate">{type.name}</div>
+                      <div 
+                        className="text-xs font-medium truncate"
+                        style={themeColors ? { color: themeColors.text } : {}}
+                      >
+                        {type.name}
+                      </div>
                     </button>
                   ))}
                 </div>
@@ -379,7 +422,22 @@ const BreakEditor = ({ breakItem, onSave, onDelete, onCancel, onReset, events = 
                 <div className="mt-2">
                   <button
                     onClick={() => setShowCustom(!showCustom)}
-                    className="text-xs text-ocean-600 hover:text-ocean-700 flex items-center space-x-1"
+                    className="text-xs flex items-center space-x-1 transition-colors"
+                    style={themeColors ? {
+                      color: themeColors.primary,
+                    } : {
+                      color: '#0284c7',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (themeColors) {
+                        e.currentTarget.style.color = themeColors.primaryDark;
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (themeColors) {
+                        e.currentTarget.style.color = themeColors.primary;
+                      }
+                    }}
                   >
                     <IoAdd size={14} />
                     <span>Custom</span>
@@ -391,7 +449,20 @@ const BreakEditor = ({ breakItem, onSave, onDelete, onCancel, onReset, events = 
                       value={customActivity}
                       onChange={(e) => setCustomActivity(e.target.value)}
                       placeholder="Custom break type"
-                      className="w-full mt-1 px-3 py-1 text-sm border-2 border-ocean-200 rounded-lg focus:border-ocean-500 focus:outline-none"
+                      className="w-full mt-1 px-3 py-1 text-sm border-2 rounded-lg focus:outline-none transition-colors"
+                      style={{
+                        borderColor: themeColors ? hexToRgba(themeColors.primary, 0.3) : '#bae6fd',
+                      }}
+                      onFocus={(e) => {
+                        if (themeColors) {
+                          e.target.style.borderColor = themeColors.primary;
+                        }
+                      }}
+                      onBlur={(e) => {
+                        if (themeColors) {
+                          e.target.style.borderColor = hexToRgba(themeColors.primary, 0.3);
+                        }
+                      }}
                     />
                   )}
                 </div>
@@ -399,7 +470,10 @@ const BreakEditor = ({ breakItem, onSave, onDelete, onCancel, onReset, events = 
 
               {/* Duration - Compact */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label 
+                  className="block text-sm font-medium mb-2"
+                  style={themeColors ? { color: themeColors.text } : {}}
+                >
                   Duration: {duration} minutes
                 </label>
                 <input
@@ -409,8 +483,16 @@ const BreakEditor = ({ breakItem, onSave, onDelete, onCancel, onReset, events = 
                   value={duration}
                   onChange={(e) => setDuration(e.target.value)}
                   className="w-full"
+                  style={themeColors ? {
+                    accentColor: themeColors.primary,
+                  } : {
+                    accentColor: '#0ea5e9',
+                  }}
                 />
-                <div className="flex justify-between text-xs text-gray-500 mt-1">
+                <div 
+                  className="flex justify-between text-xs mt-1"
+                  style={themeColors ? { color: themeColors.textLight } : {}}
+                >
                   <span>{breakType.minDuration} min</span>
                   <span>{breakType.maxDuration} min</span>
                 </div>
@@ -421,14 +503,30 @@ const BreakEditor = ({ breakItem, onSave, onDelete, onCancel, onReset, events = 
             <div className="space-y-4">
               {/* Reason */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label 
+                  className="block text-sm font-medium mb-2"
+                  style={themeColors ? { color: themeColors.text } : {}}
+                >
                   Reason (Optional)
                 </label>
                 <textarea
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
                   placeholder="e.g., After 3 back-to-back meetings (cleared when time changes)"
-                  className="w-full px-3 py-2 text-sm border-2 border-gray-200 rounded-lg focus:border-ocean-500 focus:outline-none resize-none"
+                  className="w-full px-3 py-2 text-sm border-2 border-gray-200 rounded-lg focus:outline-none resize-none transition-colors"
+                  style={{
+                    borderColor: themeColors ? hexToRgba(themeColors.primary, 0.3) : '#bae6fd',
+                  }}
+                  onFocus={(e) => {
+                    if (themeColors) {
+                      e.target.style.borderColor = themeColors.primary;
+                    }
+                  }}
+                  onBlur={(e) => {
+                    if (themeColors) {
+                      e.target.style.borderColor = hexToRgba(themeColors.primary, 0.3);
+                    }
+                  }}
                   rows="3"
                 />
                 {!reason && (
@@ -440,14 +538,30 @@ const BreakEditor = ({ breakItem, onSave, onDelete, onCancel, onReset, events = 
 
               {/* Description */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label 
+                  className="block text-sm font-medium mb-2"
+                  style={themeColors ? { color: themeColors.text } : {}}
+                >
                   Description (Optional)
                 </label>
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Additional details about this break"
-                  className="w-full px-3 py-2 text-sm border-2 border-gray-200 rounded-lg focus:border-ocean-500 focus:outline-none resize-none"
+                  className="w-full px-3 py-2 text-sm border-2 border-gray-200 rounded-lg focus:outline-none resize-none transition-colors"
+                  style={{
+                    borderColor: themeColors ? hexToRgba(themeColors.primary, 0.3) : '#bae6fd',
+                  }}
+                  onFocus={(e) => {
+                    if (themeColors) {
+                      e.target.style.borderColor = themeColors.primary;
+                    }
+                  }}
+                  onBlur={(e) => {
+                    if (themeColors) {
+                      e.target.style.borderColor = hexToRgba(themeColors.primary, 0.3);
+                    }
+                  }}
                   rows="3"
                 />
               </div>
@@ -491,7 +605,26 @@ const BreakEditor = ({ breakItem, onSave, onDelete, onCancel, onReset, events = 
             </button>
             <button
               onClick={handleSave}
-              className="px-6 py-2 text-sm bg-ocean-500 text-white rounded-lg hover:bg-ocean-600 transition-colors flex items-center space-x-2"
+              className="px-6 py-2 text-sm text-white rounded-lg transition-colors flex items-center space-x-2"
+              style={themeColors ? {
+                backgroundColor: themeColors.primary,
+              } : {
+                backgroundColor: '#0ea5e9',
+              }}
+              onMouseEnter={(e) => {
+                if (themeColors) {
+                  e.currentTarget.style.backgroundColor = themeColors.primaryDark;
+                } else {
+                  e.currentTarget.style.backgroundColor = '#0284c7';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (themeColors) {
+                  e.currentTarget.style.backgroundColor = themeColors.primary;
+                } else {
+                  e.currentTarget.style.backgroundColor = '#0ea5e9';
+                }
+              }}
             >
               <IoCheckmark size={16} />
               <span>Save</span>

@@ -336,17 +336,42 @@ const BreakTimeline = ({ events = [], breakSuggestions = [], loading = false, on
   return (
     <div className="glass-card p-6">
       <div className="flex items-center justify-between mb-6">
-        <h3 className="text-xl font-semibold text-ocean-800">
+        <h3 
+          className="text-xl font-semibold"
+          style={themeColors ? { color: themeColors.text } : {}}
+        >
           Today's Flow & Break Windows
           {timeSlots.length > 0 && (
-            <span className="ml-2 text-sm font-normal text-ocean-500">
+            <span 
+              className="ml-2 text-sm font-normal"
+              style={themeColors ? { color: themeColors.textLight } : {}}
+            >
               ({timeSlots.length} {timeSlots.length === 1 ? 'item' : 'items'})
             </span>
           )}
         </h3>
         <button
           onClick={handleAddBreak}
-          className="px-4 py-2 bg-ocean-500 text-white rounded-lg hover:bg-ocean-600 transition-colors flex items-center space-x-2 text-sm"
+          className="px-4 py-2 text-white rounded-lg transition-colors flex items-center space-x-2 text-sm"
+          style={themeColors ? {
+            backgroundColor: themeColors.primary,
+          } : {
+            backgroundColor: '#0ea5e9',
+          }}
+          onMouseEnter={(e) => {
+            if (themeColors) {
+              e.currentTarget.style.backgroundColor = themeColors.primaryDark;
+            } else {
+              e.currentTarget.style.backgroundColor = '#0284c7';
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (themeColors) {
+              e.currentTarget.style.backgroundColor = themeColors.primary;
+            } else {
+              e.currentTarget.style.backgroundColor = '#0ea5e9';
+            }
+          }}
         >
           <IoAddOutline size={18} />
           <span>Add Break</span>
@@ -354,7 +379,10 @@ const BreakTimeline = ({ events = [], breakSuggestions = [], loading = false, on
       </div>
 
       {timeSlots.length === 0 ? (
-        <div className="text-center py-8 text-ocean-500">
+        <div 
+          className="text-center py-8"
+          style={themeColors ? { color: themeColors.textLight } : {}}
+        >
           <p>No upcoming events or breaks scheduled.</p>
           <p className="text-sm mt-2">Connect your Google Calendar to see your schedule and get break recommendations.</p>
         </div>
