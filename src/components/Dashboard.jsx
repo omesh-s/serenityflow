@@ -9,6 +9,7 @@ import { API_BASE_URL } from '../utils/constants';
 import { useBreakScheduler } from '../hooks/useBreakScheduler';
 import { useTheme } from '../hooks/useTheme.jsx';
 import { useTimezone } from '../hooks/useTimezone.jsx';
+import { useAuth } from '../hooks/useAuth';
 import { hexToRgba } from '../utils/hexToRgb';
 
 /**
@@ -23,21 +24,42 @@ const Dashboard = () => {
   const { upcomingBreak } = useBreakScheduler();
   const { themeColors } = useTheme();
   const { timezone } = useTimezone();
+  const { user } = useAuth();
   
   // Memoize schedule data to prevent unnecessary re-fetches
   const [lastFetchTime, setLastFetchTime] = useState(0);
 
+  // Load data only once on mount - no automatic refresh
   useEffect(() => {
-    loadDashboardData();
+    // Only load if we don't have data yet
+    if (!scheduleData) {
+      loadDashboardData(false, true); // Load once, show loading spinner
+    }
     
-    // Refresh data every 5 minutes (increased from 2 to reduce API calls and Gemini usage)
-    const interval = setInterval(loadDashboardData, 5 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [timezone]); // Reload when timezone changes
+    // Disable automatic refresh to prevent breaks from changing
+    // User can manually refresh if needed
+    // const interval = setInterval(() => {
+    //   if (scheduleData) {
+    //     loadDashboardData(false, false);
+    //   }
+    // }, 5 * 60 * 1000);
+    // return () => clearInterval(interval);
+  }, []); // Empty dependency array - only run on mount
+  
+  // Separate effect for timezone changes - but don't auto-reload
+  // Only reload if user explicitly changes timezone in settings
+  // useEffect(() => {
+  //   if (scheduleData && timezone) {
+  //     loadDashboardData(true, true);
+  //   }
+  // }, [timezone]);
 
-  const loadDashboardData = async (forceRefresh = false) => {
+  const loadDashboardData = async (forceRefresh = false, showLoading = true) => {
     try {
-      setLoading(true);
+      // Only show loading if explicitly requested and (force refresh or first load)
+      if (showLoading && (forceRefresh || !scheduleData)) {
+        setLoading(true);
+      }
       setError(null);
       const response = await axios.get(`${API_BASE_URL}/api/serenity/schedule`, {
         params: {
@@ -52,7 +74,9 @@ const Dashboard = () => {
       console.error('Failed to load dashboard:', err);
       setError('Failed to load schedule. Please try again.');
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
     }
   };
 
@@ -75,7 +99,7 @@ const Dashboard = () => {
             transition: 'color 0.5s ease-in-out'
           }}
         >
-          Welcome back
+          Welcome back{user?.name && user.name !== 'User' ? `, ${user.name}` : ''}
         </h2>
         <p 
           style={{
@@ -188,7 +212,10 @@ const Dashboard = () => {
                  events={scheduleData?.events || []}
                  breakSuggestions={scheduleData?.break_suggestions || []}
                  loading={loading}
-                 onBreaksUpdate={() => loadDashboardData(true)}
+                 onBreaksUpdate={() => {
+                   // Small delay to allow backend to process the update
+                   setTimeout(() => loadDashboardData(true), 500);
+                 }}
                />
              </motion.div>
 

@@ -20,18 +20,45 @@ export const useAuth = () => {
     try {
       const response = await axios.get(`${API_BASE_URL}/auth/status`);
       const status = response.data;
+      console.log('Auth status response:', status); // Debug log
       setAuthStatus(status);
       
       // User is authenticated if Google is connected
       if (status.google && status.google.connected) {
         setIsAuthenticated(true);
-        setUser({ name: 'User', email: 'user@example.com' });
+        // Use user info from Google if available
+        if (status.google.user && status.google.user.given_name) {
+          const userInfo = status.google.user;
+          console.log('✅ User info from backend:', userInfo); // Debug log
+          const firstName = userInfo.given_name || userInfo.name || 'User';
+          console.log('✅ Setting user name to:', firstName); // Debug log
+          setUser({
+            name: firstName, // Use first name (given_name) - this is what displays
+            email: userInfo.email || '',
+            picture: userInfo.picture || ''
+          });
+        } else if (status.google.user && status.google.user.name) {
+          // Fallback to full name if given_name is not available
+          const userInfo = status.google.user;
+          console.log('⚠️ Using full name (given_name not available):', userInfo.name);
+          setUser({
+            name: userInfo.name.split(' ')[0] || 'User', // Extract first word as first name
+            email: userInfo.email || '',
+            picture: userInfo.picture || ''
+          });
+        } else {
+          // Fallback if user info not available yet
+          console.warn('⚠️ User info not available in status response. User may need to re-authenticate.');
+          console.warn('Status response:', JSON.stringify(status, null, 2));
+          setUser({ name: 'User', email: '' });
+        }
       } else {
         setIsAuthenticated(false);
         setUser(null);
       }
     } catch (error) {
       console.error('Auth check failed:', error);
+      console.error('Error details:', error.response?.data || error.message);
       setIsAuthenticated(false);
       setUser(null);
     } finally {

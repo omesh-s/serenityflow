@@ -6,6 +6,7 @@ import { getBreakType } from '../utils/breakTypes';
 import axios from 'axios';
 import { API_BASE_URL } from '../utils/constants';
 import { useTimezone } from '../hooks/useTimezone.jsx';
+import { useTheme } from '../hooks/useTheme.jsx';
 
 /**
  * Break Timeline Component - visualizes recommended break windows and calendar events
@@ -14,7 +15,9 @@ import { useTimezone } from '../hooks/useTimezone.jsx';
 const BreakTimeline = ({ events = [], breakSuggestions = [], loading = false, onBreaksUpdate }) => {
   const [editingBreak, setEditingBreak] = useState(null);
   const [addingBreak, setAddingBreak] = useState(false);
+  const [localBreakUpdates, setLocalBreakUpdates] = useState({}); // Track local time updates
   const { timezone } = useTimezone();
+  const { themeColors } = useTheme();
   
   // Combine events and break suggestions into a timeline
   const timeSlots = useMemo(() => {
@@ -57,14 +60,30 @@ const BreakTimeline = ({ events = [], breakSuggestions = [], loading = false, on
     });
     
     // Add break suggestions - show all future breaks (backend validates placement)
+    // Use a Set to track break IDs and prevent duplicates
+    const seenBreakIds = new Set();
     breakSuggestions.forEach(breakSuggestion => {
-      const breakTime = new Date(breakSuggestion.time);
+      // Use stable ID from backend, or generate one based on time (rounded to minute)
+      const breakTimeRaw = new Date(breakSuggestion.time);
+      const breakTimeRounded = new Date(breakTimeRaw.getFullYear(), breakTimeRaw.getMonth(), breakTimeRaw.getDate(), 
+                                        breakTimeRaw.getHours(), breakTimeRaw.getMinutes(), 0);
+      const breakId = breakSuggestion.id || `break_${breakTimeRounded.getTime()}`;
+      
+      // Skip if we've already seen this break (prevent duplicates)
+      if (seenBreakIds.has(breakId)) {
+        return;
+      }
+      seenBreakIds.add(breakId);
+      
+      // Apply local time update if available
+      const breakTimeStr = localBreakUpdates[breakId] || breakSuggestion.time;
+      const breakTime = new Date(breakTimeStr);
       const breakType = getBreakType(breakSuggestion.activity);
       
       // Only show future breaks
       if (breakTime > now) {
         slots.push({
-          id: breakSuggestion.id || `break_${breakTime.getTime()}`,
+          id: breakId,
           time: breakTime,
           sortTime: getSortTime(breakTime), // Use UTC timestamp for sorting
           type: 'break',
@@ -76,7 +95,7 @@ const BreakTimeline = ({ events = [], breakSuggestions = [], loading = false, on
           icon: breakSuggestion.icon || breakType.icon,
           color: breakType.color,
           recommended: true,
-          breakData: breakSuggestion,
+          breakData: { ...breakSuggestion, time: breakTimeStr }, // Include updated time in breakData
         });
       }
     });
@@ -87,7 +106,7 @@ const BreakTimeline = ({ events = [], breakSuggestions = [], loading = false, on
     
     // Limit to next 20 items to show more context
     return slots.slice(0, 20);
-  }, [events, breakSuggestions, timezone]);
+  }, [events, breakSuggestions, timezone, localBreakUpdates]);
   
   const formatTime = (date) => {
     if (!date) return '';
@@ -181,10 +200,30 @@ const BreakTimeline = ({ events = [], breakSuggestions = [], loading = false, on
       return 'bg-ocean-200';
     }
     switch (type) {
-      case 'meeting': return 'bg-ocean-500';
-      case 'work': return 'bg-ocean-100';
+      case 'meeting': 
+        // Use theme primary color for meetings
+        return ''; // Return empty string, we'll use inline style
+      case 'work': 
+        // Use theme light color for work
+        return ''; // Return empty string, we'll use inline style
       default: return 'bg-gray-200';
     }
+  };
+  
+  const getMeetingStyle = (type) => {
+    if (type === 'meeting' && themeColors) {
+      return {
+        backgroundColor: themeColors.primary,
+        color: '#ffffff',
+      };
+    }
+    if (type === 'work' && themeColors) {
+      return {
+        backgroundColor: themeColors.primaryLight + '40', // Add transparency
+        color: themeColors.text,
+      };
+    }
+    return {};
   };
 
   const getSlotStyle = (type, color) => {
@@ -224,6 +263,15 @@ const BreakTimeline = ({ events = [], breakSuggestions = [], loading = false, on
         breaks: [breakData],
         user_id: "default", // In production, get from auth
       });
+      
+      // Clear local updates after save
+      if (breakData.id) {
+        setLocalBreakUpdates(prev => {
+          const updated = { ...prev };
+          delete updated[breakData.id];
+          return updated;
+        });
+      }
       
       // Notify parent component to refresh breaks
       if (onBreaksUpdate) {
@@ -328,29 +376,63 @@ const BreakTimeline = ({ events = [], breakSuggestions = [], loading = false, on
                 >
                   {/* Time marker */}
                   <div className="w-24 flex-shrink-0 pt-1 pl-10">
-                    <div className="text-sm font-medium text-ocean-600">{formatTime(slot.time)}</div>
-                    <div className="text-xs text-ocean-400">{formatDate(slot.time)}</div>
+                    <div 
+                      className="text-sm font-medium"
+                      style={themeColors ? { color: themeColors.text } : {}}
+                    >
+                      {formatTime(slot.time)}
+                    </div>
+                    <div 
+                      className="text-xs"
+                      style={themeColors ? { color: themeColors.textLight } : {}}
+                    >
+                      {formatDate(slot.time)}
+                    </div>
                   </div>
 
                   {/* Timeline dot */}
-                  <div className={`absolute left-[19px] top-2 w-3 h-3 rounded-full z-10 ${
-                    slot.recommended ? 'bg-serenity-dark animate-pulse' : 'bg-ocean-400'
-                  }`}></div>
+                  <div 
+                    className={`absolute left-[19px] top-2 w-3 h-3 rounded-full z-10 ${
+                      slot.recommended ? 'bg-serenity-dark animate-pulse' : ''
+                    }`}
+                    style={slot.recommended ? {} : (slot.type === 'meeting' && themeColors ? {
+                      backgroundColor: themeColors.primary
+                    } : {})}
+                  ></div>
 
                   {/* Slot card */}
                   <div className="flex-1 ml-4">
                     <div 
-                      className={`${getSlotColor(slot.type, slot.recommended, slot.color)} rounded-lg px-4 py-3 transition-transform hover:scale-[1.02] ${
+                      className={`${getSlotColor(slot.type, slot.recommended, slot.color)} rounded-lg px-4 py-3 transition-all ${
                         slot.recommended && slot.type === 'break' ? 'shadow-lg border-2 border-serenity-dark' : 'shadow-sm border-2'
-                      } ${slot.htmlLink ? 'cursor-pointer hover:shadow-md' : ''} ${
+                      } ${slot.htmlLink || slot.type === 'meeting' ? 'cursor-pointer hover:shadow-md' : ''} ${
                         slot.type === 'break' ? 'cursor-pointer' : ''
-                      }`}
-                      style={slot.type === 'break' ? getSlotStyle(slot.type, slot.color) : {}}
+                      } ${slot.type === 'meeting' ? 'cursor-pointer' : ''}`}
+                      style={{
+                        ...(slot.type === 'break' ? getSlotStyle(slot.type, slot.color) : {}),
+                        ...(slot.type === 'meeting' ? getMeetingStyle(slot.type) : {}),
+                        ...(slot.type === 'work' ? getMeetingStyle(slot.type) : {}),
+                        ...(slot.type === 'meeting' && themeColors ? {
+                          borderColor: 'transparent',
+                        } : {}),
+                      }}
+                      onMouseEnter={(e) => {
+                        if (slot.type === 'meeting' && themeColors) {
+                          e.currentTarget.style.backgroundColor = themeColors.primaryDark;
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (slot.type === 'meeting' && themeColors) {
+                          e.currentTarget.style.backgroundColor = themeColors.primary;
+                        }
+                      }}
                       onClick={() => {
                         if (slot.htmlLink) {
                           window.open(slot.htmlLink, '_blank');
                         } else if (slot.type === 'break') {
                           setEditingBreak(slot.breakData || slot);
+                        } else if (slot.type === 'meeting' && slot.htmlLink) {
+                          window.open(slot.htmlLink, '_blank');
                         }
                       }}
                     >
@@ -408,12 +490,15 @@ const BreakTimeline = ({ events = [], breakSuggestions = [], loading = false, on
           <div className="mt-6 pt-6 border-t border-ocean-200">
             <div className="flex items-center justify-center space-x-6 text-sm flex-wrap gap-2">
               <div className="flex items-center space-x-2">
-                <div className="w-3 h-3 rounded-full bg-ocean-500"></div>
-                <span className="text-ocean-600">Meeting</span>
+                <div 
+                  className="w-3 h-3 rounded-full"
+                  style={themeColors ? { backgroundColor: themeColors.primary } : {}}
+                ></div>
+                <span style={themeColors ? { color: themeColors.text } : {}}>Meeting</span>
               </div>
               <div className="flex items-center space-x-2">
                 <div className="w-3 h-3 rounded-full bg-gradient-to-r from-serenity to-serenity-dark"></div>
-                <span className="text-ocean-600">Recommended Break</span>
+                <span style={themeColors ? { color: themeColors.text } : {}}>Recommended Break</span>
               </div>
             </div>
           </div>
@@ -429,8 +514,57 @@ const BreakTimeline = ({ events = [], breakSuggestions = [], loading = false, on
           onCancel={() => {
             setEditingBreak(null);
             setAddingBreak(false);
+            // Clear local updates when canceling
+            if (editingBreak?.id) {
+              setLocalBreakUpdates(prev => {
+                const updated = { ...prev };
+                delete updated[editingBreak.id];
+                return updated;
+              });
+            }
           }}
+          onReset={async (breakId) => {
+            try {
+              // Delete the customization to reset to original break
+              await axios.delete(`${API_BASE_URL}/api/breaks/${breakId}`, {
+                params: { user_id: "default" }
+              });
+              
+              // Refresh breaks to show original
+              if (onBreaksUpdate) {
+                onBreaksUpdate();
+              }
+              
+              // Close editor
+              setEditingBreak(null);
+            } catch (error) {
+              console.error('Error resetting break:', error);
+              alert('Failed to reset break. Please try again.');
+            }
+          }}
+          originalBreakData={editingBreak ? (() => {
+            // Find the original break data before customization
+            // If the break has been customized, we need to get it from the backend
+            // For now, use the break data from breakSuggestions (which may be customized)
+            // The reset will delete the customization, restoring the original
+            const found = breakSuggestions.find(b => b.id === editingBreak.id);
+            return found || editingBreak;
+          })() : null}
           events={events}
+          onTimeChange={(breakId, newTime) => {
+            // Update local state immediately for real-time display
+            setLocalBreakUpdates(prev => ({
+              ...prev,
+              [breakId]: newTime
+            }));
+            // Also update the editingBreak state
+            if (editingBreak?.id === breakId) {
+              setEditingBreak(prev => ({
+                ...prev,
+                time: newTime
+              }));
+            }
+          }}
         />
       )}
     </div>

@@ -16,7 +16,7 @@ function App() {
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-ocean-50 to-serenity-light">
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-ocean-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-ocean-600 font-medium">Loading SerenityFlow...</p>
+          <p className="text-ocean-600 font-medium">Loading Serenity...</p>
         </div>
       </div>
     );

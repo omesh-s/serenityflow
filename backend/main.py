@@ -10,7 +10,7 @@ init_db()
 # Create FastAPI app
 app = FastAPI(
     title="Serenity API",
-    description="Backend API for Serenity Flow - Break scheduling and wellness",
+    description="Backend API for Serenity - Break scheduling and wellness",
     version="1.0.0"
 )
 

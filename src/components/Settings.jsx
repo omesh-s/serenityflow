@@ -132,7 +132,7 @@ const Settings = () => {
             transition: 'color 0.5s ease-in-out'
           }}
         >
-          Customize your SerenityFlow experience
+          Customize your Serenity experience
         </p>
       </motion.div>
 

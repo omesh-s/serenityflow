@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { IoHomeOutline, IoSettingsOutline, IoLogOutOutline } from 'react-icons/io5';
@@ -9,8 +9,15 @@ import logo from '../assets/SerenityLogo.png';
 
 const Layout = ({ children }) => {
   const location = useLocation();
-  const { user, logout } = useAuth();
+  const { user, logout, checkAuthStatus } = useAuth();
   const { themeColors } = useTheme();
+  
+  // Note: User info will be fetched automatically by useAuth hook
+  // If user name is "User", it means user info is not available yet
+  // This can happen if:
+  // 1. User authenticated before we added userinfo scopes (need to re-authenticate)
+  // 2. User info is still being fetched from Google API
+  // The backend will automatically fetch user info when /auth/status is called
   
   // Get theme-based background gradient
   const getBackgroundStyle = () => {
@@ -65,7 +72,7 @@ const Layout = ({ children }) => {
             >
               <img 
                 src={logo} 
-                alt="SerenityFlow Logo" 
+                alt="Serenity Logo" 
                 className="w-full h-full object-contain"
               />
             </motion.div>
@@ -78,7 +85,7 @@ const Layout = ({ children }) => {
                 transition: 'background-image 0.5s ease-in-out'
               }}
             >
-              SerenityFlow
+              Serenity
             </h1>
           </Link>
 
@@ -99,13 +106,14 @@ const Layout = ({ children }) => {
                 }}
               >
                 <span 
-                  className="text-sm"
+                  className="text-sm font-medium"
                   style={{
                     color: themeColors ? themeColors.textLight : '#0284c7',
                     transition: 'color 0.5s ease-in-out'
                   }}
+                  title={user.email || 'User'}
                 >
-                  {user.name}
+                  {user.name || 'User'}
                 </span>
                 <button
                   onClick={logout}

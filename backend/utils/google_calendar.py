@@ -9,7 +9,11 @@ import os
 from config import settings
 
 
-SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
+SCOPES = [
+    'https://www.googleapis.com/auth/calendar.readonly',
+    'https://www.googleapis.com/auth/userinfo.profile',
+    'https://www.googleapis.com/auth/userinfo.email'
+]
 
 
 def get_google_oauth_flow(state: Optional[str] = None) -> Flow:

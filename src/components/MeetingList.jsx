@@ -1,6 +1,7 @@
 import React from 'react';
 import { IoCalendarOutline, IoTimeOutline, IoPeopleOutline } from 'react-icons/io5';
 import { useTimezone } from '../hooks/useTimezone.jsx';
+import { useTheme } from '../hooks/useTheme.jsx';
 
 /**
  * Meeting List Component - displays upcoming meetings from Google Calendar
@@ -8,6 +9,7 @@ import { useTimezone } from '../hooks/useTimezone.jsx';
  */
 const MeetingList = ({ loading, events = [], error }) => {
   const { timezone } = useTimezone();
+  const { themeColors } = useTheme();
   
   const formatTime = (dateString) => {
     const date = new Date(dateString);
@@ -85,14 +87,21 @@ const MeetingList = ({ loading, events = [], error }) => {
     return (
       <div className="glass-card p-6">
         <div className="flex items-center justify-between mb-6">
-          <h3 className="text-xl font-semibold text-ocean-800 flex items-center space-x-2">
+          <h3 
+            className="text-xl font-semibold flex items-center space-x-2"
+            style={themeColors ? { color: themeColors.text } : {}}
+          >
             <IoCalendarOutline size={24} />
             <span>Upcoming Meetings</span>
           </h3>
         </div>
         <div className="animate-pulse space-y-4">
           {[1, 2, 3].map(i => (
-            <div key={i} className="h-20 bg-ocean-100 rounded-lg"></div>
+            <div 
+              key={i} 
+              className="h-20 rounded-lg"
+              style={themeColors ? { backgroundColor: themeColors.primaryLight + '40' } : {}}
+            ></div>
           ))}
         </div>
       </div>
@@ -103,7 +112,10 @@ const MeetingList = ({ loading, events = [], error }) => {
     return (
       <div className="glass-card p-6">
         <div className="flex items-center justify-between mb-6">
-          <h3 className="text-xl font-semibold text-ocean-800 flex items-center space-x-2">
+          <h3 
+            className="text-xl font-semibold flex items-center space-x-2"
+            style={themeColors ? { color: themeColors.text } : {}}
+          >
             <IoCalendarOutline size={24} />
             <span>Upcoming Meetings</span>
           </h3>
@@ -118,16 +130,27 @@ const MeetingList = ({ loading, events = [], error }) => {
   return (
     <div className="glass-card p-6">
       <div className="flex items-center justify-between mb-6">
-        <h3 className="text-xl font-semibold text-ocean-800 flex items-center space-x-2">
+        <h3 
+          className="text-xl font-semibold flex items-center space-x-2"
+          style={themeColors ? { color: themeColors.text } : {}}
+        >
           <IoCalendarOutline size={24} />
           <span>Upcoming Meetings</span>
         </h3>
-        <span className="text-sm text-ocean-600">{events.length} upcoming</span>
+        <span 
+          className="text-sm"
+          style={themeColors ? { color: themeColors.textLight } : {}}
+        >
+          {events.length} upcoming
+        </span>
       </div>
 
       <div className="space-y-3">
         {events.length === 0 ? (
-          <div className="text-center py-8 text-ocean-500">
+          <div 
+            className="text-center py-8"
+            style={themeColors ? { color: themeColors.textLight } : {}}
+          >
             <p>No meetings scheduled. Enjoy your free time! 🎉</p>
             <p className="text-sm mt-2">Connect your Google Calendar to see your events here.</p>
           </div>
@@ -135,14 +158,35 @@ const MeetingList = ({ loading, events = [], error }) => {
           events.map((event) => (
             <div
               key={event.id}
-              className="p-4 bg-white/50 hover:bg-white/80 rounded-xl transition-all cursor-pointer border border-ocean-100 hover:border-ocean-300 hover:shadow-md"
+              className="p-4 bg-white/50 hover:bg-white/80 rounded-xl transition-all cursor-pointer border hover:shadow-md"
+              style={{
+                borderColor: themeColors ? `${themeColors.primaryLight}80` : '#bae6fd',
+              }}
+              onMouseEnter={(e) => {
+                if (themeColors) {
+                  e.currentTarget.style.borderColor = themeColors.primary;
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (themeColors) {
+                  e.currentTarget.style.borderColor = `${themeColors.primaryLight}80`;
+                }
+              }}
               onClick={() => event.htmlLink && window.open(event.htmlLink, '_blank')}
             >
               <div className="flex items-start justify-between">
                 <div className="flex-1">
-                  <h4 className="font-semibold text-ocean-800 mb-2">{event.summary || 'No Title'}</h4>
+                  <h4 
+                    className="font-semibold mb-2"
+                    style={themeColors ? { color: themeColors.text } : {}}
+                  >
+                    {event.summary || 'No Title'}
+                  </h4>
                   
-                  <div className="flex flex-wrap gap-4 text-sm text-ocean-600">
+                  <div 
+                    className="flex flex-wrap gap-4 text-sm"
+                    style={themeColors ? { color: themeColors.textLight } : {}}
+                  >
                     <div className="flex items-center space-x-1">
                       <IoTimeOutline />
                       <span>{formatTime(event.start)} - {formatTime(event.end)}</span>
@@ -156,17 +200,38 @@ const MeetingList = ({ loading, events = [], error }) => {
                   </div>
                   
                   {event.location && (
-                    <div className="mt-2 text-xs text-ocean-500">📍 {event.location}</div>
+                    <div 
+                      className="mt-2 text-xs"
+                      style={themeColors ? { color: themeColors.textLight } : {}}
+                    >
+                      📍 {event.location}
+                    </div>
                   )}
                   
                   {event.description && (
-                    <div className="mt-2 text-xs text-ocean-400 line-clamp-2">{event.description}</div>
+                    <div 
+                      className="mt-2 text-xs line-clamp-2"
+                      style={themeColors ? { color: themeColors.textLight + 'CC' } : {}}
+                    >
+                      {event.description}
+                    </div>
                   )}
                 </div>
 
                 <div className="ml-4 text-right">
-                  <div className="text-xs text-ocean-500 mb-1">{formatDate(event.start)}</div>
-                  <span className="inline-block px-3 py-1 bg-ocean-100 text-ocean-700 text-xs font-medium rounded-full">
+                  <div 
+                    className="text-xs mb-1"
+                    style={themeColors ? { color: themeColors.textLight } : {}}
+                  >
+                    {formatDate(event.start)}
+                  </div>
+                  <span 
+                    className="inline-block px-3 py-1 text-xs font-medium rounded-full"
+                    style={themeColors ? {
+                      backgroundColor: themeColors.primaryLight + '40',
+                      color: themeColors.text,
+                    } : {}}
+                  >
                     {getTimeUntil(event.start)}
                   </span>
                 </div>

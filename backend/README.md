@@ -1,6 +1,6 @@
 # Serenity Backend
 
-FastAPI backend for Serenity Flow application that integrates with Google Calendar, Notion, Gemini, and Eleven Labs APIs.
+FastAPI backend for Serenity application that integrates with Google Calendar, Notion, Gemini, and Eleven Labs APIs.
 
 ## Setup
 

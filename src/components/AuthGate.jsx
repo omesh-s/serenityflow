@@ -21,11 +21,15 @@ const AuthGate = () => {
     const success = searchParams.get('success');
     
     if (service && success === 'true') {
-      // OAuth callback successful, check auth status
-      setTimeout(() => {
-        checkAuthStatus();
-        navigate('/', { replace: true });
-      }, 1000);
+      // OAuth callback successful, wait a bit for backend to process, then check auth status
+      // Give backend time to save user info to database
+      setTimeout(async () => {
+        await checkAuthStatus();
+        // Wait a moment for state to update, then navigate
+        setTimeout(() => {
+          navigate('/', { replace: true });
+        }, 500);
+      }, 1500);
     } else if (service && success === 'false') {
       setError('Authentication failed. Please try again.');
     }
@@ -69,13 +73,13 @@ const AuthGate = () => {
           <div className="w-24 h-24 mx-auto mb-4 flex items-center justify-center">
             <img 
               src={logo} 
-              alt="SerenityFlow Logo" 
+              alt="Serenity Logo" 
               className="w-full h-full object-contain"
               style={{ maxWidth: '96px', maxHeight: '96px' }}
             />
           </div>
           <h1 className="text-4xl font-bold bg-gradient-to-r from-ocean-600 to-ocean-400 bg-clip-text text-transparent mb-2">
-            SerenityFlow
+            Serenity
           </h1>
           <p className="text-ocean-600">Your automated productivity & stress companion</p>
         </div>

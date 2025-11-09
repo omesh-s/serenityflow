@@ -45,13 +45,27 @@ async def google_callback(request: Request, code: str = None, state: str = None,
         if credentials.expiry:
             expires_in = int((credentials.expiry - datetime.utcnow()).total_seconds())
         
+        # Fetch user info from Google
+        user_info = None
+        try:
+            from googleapiclient.discovery import build
+            service = build('oauth2', 'v2', credentials=credentials)
+            user_info = service.userinfo().get().execute()
+            print(f"Successfully fetched user info: {user_info.get('given_name', 'N/A')} ({user_info.get('email', 'N/A')})")
+        except Exception as e:
+            print(f"Error fetching user info in callback: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            # Continue even if user info fetch fails - tokens are still saved
+        
         # Save tokens to database
         save_token(
             db=db,
             service="google",
             access_token=credentials.token,
             refresh_token=credentials.refresh_token,
-            expires_in=expires_in
+            expires_in=expires_in,
+            user_info=user_info  # Pass user info to save_token
         )
         
         # Redirect to frontend with success
@@ -119,11 +133,84 @@ async def notion_callback(request: Request, code: str = None, error: str = None,
 @router.get("/status")
 async def auth_status(db: Session = Depends(get_db)):
     """Check OAuth connection status for Google and Notion."""
+    import json
+    from utils.google_calendar import get_credentials_from_token, refresh_credentials_if_needed
+    from googleapiclient.discovery import build
+    
     google_token = get_token(db, "google")
     notion_token = get_token(db, "notion")
     
+    google_status = {"connected": google_token is not None}
+    user_info = None
+    
+    # If Google is connected, fetch user info
+    if google_token:
+        try:
+            # Try to get user info from database first
+            if hasattr(google_token, 'user_info') and google_token.user_info:
+                try:
+                    user_info = json.loads(google_token.user_info)
+                    print(f"Loaded user info from database: {user_info.get('given_name', 'N/A')}")
+                except json.JSONDecodeError as e:
+                    print(f"Error parsing user_info from database: {str(e)}")
+                    user_info = None
+            
+            # If no user info in database, fetch from Google API
+            if not user_info:
+                print("User info not in database, fetching from Google API...")
+                try:
+                    creds = get_credentials_from_token(google_token.access_token, google_token.refresh_token)
+                    creds, _ = refresh_credentials_if_needed(creds)
+                    service = build('oauth2', 'v2', credentials=creds)
+                    user_info = service.userinfo().get().execute()
+                    print(f"Fetched user info from Google: {user_info.get('given_name', 'N/A')}")
+                    
+                    # Save user info to database
+                    if user_info:
+                        try:
+                            from utils.token_manager import save_token
+                            save_token(
+                                db=db,
+                                service="google",
+                                access_token=google_token.access_token,
+                                refresh_token=google_token.refresh_token,
+                                expires_in=None,
+                                user_info=user_info
+                            )
+                            print("Saved user info to database")
+                        except Exception as save_error:
+                            print(f"Error saving user info to database: {str(save_error)}")
+                except Exception as api_error:
+                    error_msg = str(api_error)
+                    print(f"Error fetching user info from Google API: {error_msg}")
+                    
+                    # Check if error is due to insufficient scopes
+                    if "insufficient" in error_msg.lower() or "scope" in error_msg.lower() or "403" in error_msg:
+                        print("NOTE: Token doesn't have userinfo scopes. User needs to re-authenticate to get first name.")
+                        print("This is normal if user authenticated before we added userinfo scopes.")
+                    else:
+                        import traceback
+                        traceback.print_exc()
+        except Exception as e:
+            print(f"Error in auth_status: {str(e)}")
+            import traceback
+            traceback.print_exc()
+        
+        # Always include user info if we have it
+        if user_info:
+            google_status["user"] = {
+                "name": user_info.get("name", ""),
+                "given_name": user_info.get("given_name", ""),  # First name
+                "family_name": user_info.get("family_name", ""),  # Last name
+                "email": user_info.get("email", ""),
+                "picture": user_info.get("picture", "")
+            }
+            print(f"✓ Returning user info: given_name='{google_status['user'].get('given_name')}', name='{google_status['user'].get('name')}'")
+        else:
+            print("⚠ No user info available - user may need to re-authenticate to get new scopes")
+    
     return {
-        "google": {"connected": google_token is not None},
+        "google": google_status,
         "notion": {"connected": notion_token is not None}
     }
 
