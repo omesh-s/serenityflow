@@ -40,6 +40,10 @@ app.include_router(audio.router, prefix="/api/audio", tags=["audio"])
 from routes import breaks
 app.include_router(breaks.router, prefix="/api/breaks", tags=["breaks"])
 
+# Import and include Twilio router (server-side call initiation)
+from routes import twilio
+app.include_router(twilio.router, prefix="/api/twilio", tags=["twilio"])
+
 
 @app.get("/")
 async def root():

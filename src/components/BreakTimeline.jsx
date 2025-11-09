@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { IoCreateOutline, IoAddOutline } from 'react-icons/io5';
 import BreakEditor from './BreakEditor';
@@ -12,7 +12,7 @@ import { useTheme } from '../hooks/useTheme.jsx';
  * Break Timeline Component - visualizes recommended break windows and calendar events
  * Displays calendar events and AI-generated break suggestions with editing capabilities
  */
-const BreakTimeline = ({ events = [], breakSuggestions = [], loading = false, onBreaksUpdate }) => {
+const BreakTimeline = ({ events = [], breakSuggestions = [], loading = false, onBreaksUpdate, onMeetingEnd }) => {
   const [editingBreak, setEditingBreak] = useState(null);
   const [addingBreak, setAddingBreak] = useState(false);
   const [localBreakUpdates, setLocalBreakUpdates] = useState({}); // Track local time updates
@@ -245,6 +245,69 @@ const BreakTimeline = ({ events = [], breakSuggestions = [], loading = false, on
       ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}`
       : '14, 165, 233';
   };
+
+  // Returns minutes until the given end time (positive if in the future, <= 0 if passed)
+  const minutesUntilEnd = (endDateString) => {
+    const end = new Date(endDateString);
+    const now = new Date();
+    if (isNaN(end.getTime())) return null;
+    return Math.round((end - now) / 60000);
+  };
+
+  // Track which meetings we've already used as triggers so we don't call the callback repeatedly
+  const triggeredMeetingIdsRef = useRef(new Set());
+
+  // Periodically check events and call `onMeetingEnd(event)` once when an event has passed
+  useEffect(() => {
+    if (!events || events.length === 0) {
+      // Clean up stored IDs if there are no events
+      triggeredMeetingIdsRef.current.clear();
+      return;
+    }
+
+    const checkFn = () => {
+      const now = new Date();
+      // Build a set of current event ids to allow cleanup of stale triggered ids
+      const currentIds = new Set(events.map(e => e.id || `${e.summary || 'evt'}_${new Date(e.start).getTime()}`));
+
+      events.forEach(event => {
+        const id = event.id || `${event.summary || 'evt'}_${new Date(event.start).getTime()}`;
+        const mins = minutesUntilEnd(event.end);
+
+        // If minutes is null we couldn't parse the end time - skip
+        if (mins === null) return;
+
+        // Trigger once when meeting has passed (end time <= now)
+        if (mins <= 0 && !triggeredMeetingIdsRef.current.has(id)) {
+          try {
+            if (typeof onMeetingEnd === 'function') {
+              onMeetingEnd(event);
+            } else {
+              // Fallback behavior: log the ended meeting so developer can wire a handler
+              // eslint-disable-next-line no-console
+              console.log('[BreakTimeline] Meeting ended trigger:', event);
+            }
+          } catch (err) {
+            // swallow callback errors - they should be handled by the caller
+            // eslint-disable-next-line no-console
+            console.error('onMeetingEnd handler threw', err);
+          }
+
+          triggeredMeetingIdsRef.current.add(id);
+        }
+      });
+
+      // Remove any triggered IDs that are no longer in the events list
+      for (const id of Array.from(triggeredMeetingIdsRef.current)) {
+        if (!currentIds.has(id)) triggeredMeetingIdsRef.current.delete(id);
+      }
+    };
+
+    // Run immediately, then poll every 15 seconds while component is mounted
+    checkFn();
+    const interval = setInterval(checkFn, 15000);
+    return () => clearInterval(interval);
+  }, [events, onMeetingEnd]);
 
   const getSlotIcon = (type, icon) => {
     if (icon) return icon;

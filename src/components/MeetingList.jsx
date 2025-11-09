@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { IoCalendarOutline, IoTimeOutline, IoPeopleOutline } from 'react-icons/io5';
 import { useTimezone } from '../hooks/useTimezone.jsx';
 import { useTheme } from '../hooks/useTheme.jsx';
@@ -7,7 +7,7 @@ import { useTheme } from '../hooks/useTheme.jsx';
  * Meeting List Component - displays upcoming meetings from Google Calendar
  * Connects to backend /api/serenity/schedule endpoint
  */
-const MeetingList = ({ loading, events = [], error }) => {
+const MeetingList = ({ loading, events = [], error, onMeetingEnd }) => {
   const { timezone } = useTimezone();
   const { themeColors } = useTheme();
   
@@ -81,6 +81,70 @@ const MeetingList = ({ loading, events = [], error }) => {
       return `in ${hours}h ${mins > 0 ? mins + 'm' : ''}`;
     }
   };
+
+  // Returns minutes until the given end time (positive if in the future, <= 0 if passed)
+  // This helper is useful when the parent component wants to take action once a meeting ends.
+  // It returns `null` if the date couldn't be parsed.
+  const minutesUntilEnd = (endDateString) => {
+    const end = new Date(endDateString);
+    const now = new Date();
+    if (isNaN(end.getTime())) return null;
+    return Math.round((end - now) / 60000);
+  };
+
+  // Track which meetings we've already used as triggers so we don't call the callback repeatedly
+  const triggeredMeetingIdsRef = useRef(new Set());
+
+  // Periodically check events and call `onMeetingEnd(event)` once when an event has passed.
+  // Behavior notes (intentionally similar to BreakTimeline):
+  // - Runs immediately and then polls every 15s while the component is mounted.
+  // - Uses a Set to avoid duplicate triggers for the same event id.
+  // - If `onMeetingEnd` is not provided, it logs the ended meeting as a fallback.
+  useEffect(() => {
+    if (!events || events.length === 0) {
+      triggeredMeetingIdsRef.current.clear();
+      return;
+    }
+
+    const checkFn = () => {
+      const currentIds = new Set(events.map(e => e.id || `${e.summary || 'evt'}_${new Date(e.start).getTime()}`));
+
+      events.forEach(event => {
+        const id = event.id || `${event.summary || 'evt'}_${new Date(event.start).getTime()}`;
+        const mins = minutesUntilEnd(event.end);
+
+        if (mins === null) return; // couldn't parse end time
+
+        // Trigger once when meeting has passed (end time <= now)
+        if (mins <= 0 && !triggeredMeetingIdsRef.current.has(id)) {
+          try {
+            if (typeof onMeetingEnd === 'function') {
+              onMeetingEnd(event);
+            } else {
+              // Fallback behavior: log the ended meeting so developer can wire a handler
+              // eslint-disable-next-line no-console
+              console.log('[MeetingList] Meeting ended trigger:', event);
+            }
+          } catch (err) {
+            // swallow callback errors - they should be handled by the caller
+            // eslint-disable-next-line no-console
+            console.error('onMeetingEnd handler threw', err);
+          }
+
+          triggeredMeetingIdsRef.current.add(id);
+        }
+      });
+
+      // Cleanup any triggered IDs that are no longer in the current events list
+      for (const id of Array.from(triggeredMeetingIdsRef.current)) {
+        if (!currentIds.has(id)) triggeredMeetingIdsRef.current.delete(id);
+      }
+    };
+
+    checkFn();
+    const interval = setInterval(checkFn, 15000);
+    return () => clearInterval(interval);
+  }, [events, onMeetingEnd]);
 
 
   if (loading) {

@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import MeetingList from './MeetingList';
 import BreakTimeline from './BreakTimeline';
 import MoodSummary from './MoodSummary';
 import SerenityBreak from './SerenityBreak';
+import ConvaiWidget from './ConvaiWidget';
 import axios from 'axios';
 import { API_BASE_URL } from '../utils/constants';
 import { useBreakScheduler } from '../hooks/useBreakScheduler';
@@ -80,9 +81,67 @@ const Dashboard = () => {
     }
   };
 
+  // Refs to track audio and timer so we can stop playback from other handlers
+  const audioRef = useRef(null);
+  const audioTimerRef = useRef(null);
+
+  // Stop audio helper (available to modal close and cleanup)
+  const stopCalmingAudio = () => {
+    try {
+      if (audioTimerRef.current) {
+        clearTimeout(audioTimerRef.current);
+        audioTimerRef.current = null;
+      }
+      if (audioRef.current) {
+        try {
+          audioRef.current.pause();
+          audioRef.current.currentTime = 0;
+        } catch (e) {
+          // ignore
+        }
+        audioRef.current = null;
+      }
+    } catch (err) {
+      console.error('Failed to stop calming audio:', err);
+    }
+  };
+
+  // Start calming audio and schedule stop after 5 minutes
+  const startCalmingAudio = (url) => {
+    try {
+      // Stop any existing audio first
+      stopCalmingAudio();
+
+      const audio = new Audio(url);
+      audio.loop = true;
+      audio.play().catch((err) => {
+        // autoplay may be blocked by browser policies; user interaction usually allows playback
+        console.warn('Audio playback failed (browser may block autoplay):', err);
+      });
+      audioRef.current = audio;
+
+      // Ensure audio stops after 5 minutes (300000 ms)
+      audioTimerRef.current = window.setTimeout(() => {
+        stopCalmingAudio();
+      }, 5 * 60 * 1000);
+    } catch (err) {
+      console.error('Failed to start calming audio:', err);
+    }
+  };
+
   const handleTakeBreak = () => {
+    const CALM_AUDIO_URL = '/assets/calm.wav';
+
+    startCalmingAudio(CALM_AUDIO_URL);
     setShowBreakModal(true);
   };
+
+  // Stop audio when component unmounts
+  useEffect(() => {
+    return () => {
+      stopCalmingAudio();
+    };
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -185,10 +244,41 @@ const Dashboard = () => {
           transition={{ delay: 0.1 }}
           className="lg:col-span-2"
         >
-          <MeetingList 
-            loading={loading} 
+          <MeetingList
+            loading={loading}
             events={scheduleData?.events || []}
             error={error}
+            onMeetingEnd={async (event) => {
+              // Meeting ended handler wired from Dashboard
+              // We look up the current wellness/mood score from the schedule data returned by the backend.
+              // Path: scheduleData.wellness_metrics.wellness_score (number, 0-100)
+              const moodScore = scheduleData?.wellness_metrics?.wellness_score;
+
+             
+              const MOOD_THRESHOLD = 70; 
+              console.log('Checking mood score on meeting end:', moodScore);
+              if (typeof moodScore === 'number' && moodScore < MOOD_THRESHOLD) {
+                try {
+                  // Only allow calling the explicitly permitted destination. The backend also enforces this.
+                  const allowedTo = '+18607302832';
+                  const message = `Hi — we noticed your wellness score is ${moodScore}. If you'd like support, reply or press any key to connect.`;
+                  const resp = await axios.post(`${API_BASE_URL}/api/twilio/call`, {
+                    to: allowedTo,
+                    message,
+                  });
+                  console.log('Twilio call response:', resp.data);
+                } catch (err) {
+                  console.error('Failed to initiate Twilio call:', err);
+                  // Fallback to showing the break modal if the call fails
+                  handleTakeBreak();
+                }
+              } else {
+                // Default/else behavior: open the Take Break modal so the user can start a break immediately.
+                // This is the standard behavior used previously.
+                console.log('onMeetingEnd fired for event:', event, 'moodScore:', moodScore);
+                handleTakeBreak();
+              }
+            }}
           />
         </motion.div>
 
@@ -221,8 +311,15 @@ const Dashboard = () => {
 
       {/* Serenity Break Modal */}
       {showBreakModal && (
-        <SerenityBreak onClose={() => setShowBreakModal(false)} />
+        <SerenityBreak onClose={() => {
+          // Stop the calming audio when the modal is closed by the user
+          stopCalmingAudio();
+          setShowBreakModal(false);
+        }} />
       )}
+
+      {/* ElevenLabs ConvAI widget (embedded) - renders the chat/agent widget on the dashboard */}
+      <ConvaiWidget />
     </div>
   );
 };
