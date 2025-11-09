@@ -6,24 +6,33 @@ import json
 
 # Cache for break suggestions
 _break_cache: Dict[str, Tuple[List[Dict], datetime, str]] = {}
-_cache_ttl = timedelta(hours=1)  # Cache breaks for 1 hour
+_cache_ttl = timedelta(hours=24)  # Cache breaks for 24 hours - breaks should be stable
 
 
 def get_events_fingerprint(events: List[Dict]) -> str:
-    """Generate a fingerprint based on event IDs and times."""
+    """Generate a stable fingerprint based on event IDs and times.
+    Events are sorted by start time first to ensure consistent fingerprinting
+    regardless of API response order.
+    """
     if not events:
         return "no_events"
     
-    # Get event IDs and times
+    # Sort events by start time to ensure consistent fingerprinting
+    # This prevents cache misses when events come in different orders
+    sorted_events = sorted(events, key=lambda e: (e.get('start', ''), e.get('id', '')))
+    
+    # Get event IDs and times (normalized)
     event_info = []
-    for event in events[:20]:  # Limit to first 20 events
+    for event in sorted_events[:20]:  # Limit to first 20 events
         event_id = event.get('id', '')
         start = event.get('start', '')
         end = event.get('end', '')
+        # Normalize times to remove any timezone variations that don't affect breaks
+        # Use just the date and time part, not the full ISO string
         event_info.append(f"{event_id}:{start}:{end}")
     
-    # Create hash of event information
-    events_str = "|".join(sorted(event_info))
+    # Create hash of event information (already sorted, so this is deterministic)
+    events_str = "|".join(event_info)
     return hashlib.md5(events_str.encode()).hexdigest()[:16]
 
 

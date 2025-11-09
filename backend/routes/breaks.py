@@ -157,3 +157,20 @@ async def delete_break(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error deleting break: {str(e)}")
 
+
+@router.post("/clear-cache")
+async def clear_break_cache(
+    user_id: str = Body(default="default"),
+    db: Session = Depends(get_db)
+):
+    """Clear break cache to force regeneration of breaks."""
+    try:
+        from utils.break_cache import clear_break_cache
+        clear_break_cache()
+        
+        return {
+            "success": True,
+            "message": "Break cache cleared successfully"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error clearing cache: {str(e)}")

@@ -71,6 +71,10 @@ async def get_schedule(
                     refresh_token=google_token.refresh_token,
                     max_results=max_events
                 )
+                # Sort events by start time to ensure consistent ordering
+                # This is critical for stable break generation
+                events = sorted(events, key=lambda e: (e.get('start', ''), e.get('id', '')))
+                
                 # Update token if it was refreshed
                 if new_access_token:
                     from utils.token_manager import save_token
@@ -175,8 +179,21 @@ async def get_schedule(
                             # Add new custom break
                             break_suggestions.append(BreakSuggestion(**custom_break))
                     
-                    # Sort by time
-                    break_suggestions.sort(key=lambda x: x.time)
+                    # Remove duplicates before sorting
+                    # Use a dict to track breaks by ID or time
+                    unique_breaks_dict = {}
+                    for break_item in break_suggestions:
+                        break_id = break_item.id if hasattr(break_item, 'id') else None
+                        break_time = break_item.time if hasattr(break_item, 'time') else ''
+                        
+                        # Use ID as primary key, or time as fallback
+                        key = break_id or break_time
+                        if key and key not in unique_breaks_dict:
+                            unique_breaks_dict[key] = break_item
+                    
+                    # Convert back to list and sort by time
+                    break_suggestions = list(unique_breaks_dict.values())
+                    break_suggestions.sort(key=lambda x: x.time if hasattr(x, 'time') else '')
         except Exception as e:
             print(f"Error merging custom breaks: {str(e)}")
             import traceback
