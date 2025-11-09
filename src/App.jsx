@@ -24,6 +24,7 @@ function App() {
     <Router>
       <Routes>
         <Route path="/auth" element={<AuthGate />} />
+        <Route path="/auth/callback" element={<AuthGate />} />
         <Route
           path="/*"
           element={

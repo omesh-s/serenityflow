@@ -1,6 +1,5 @@
 // API Configuration
-// TODO: Replace with your actual backend API URL
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
 // Google OAuth Configuration
 // TODO: Replace with your actual Google Client ID from Google Cloud Console

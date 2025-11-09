@@ -1,14 +1,16 @@
 import { useState, useEffect } from 'react';
-import apiClient from '../utils/api';
+import axios from 'axios';
+import { API_BASE_URL } from '../utils/constants';
 
 /**
  * Authentication hook - manages Google OAuth login state
- * TODO: Connect to backend /auth/google endpoint
+ * Connects to backend /auth/status endpoint
  */
 export const useAuth = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [authStatus, setAuthStatus] = useState({ google: false, notion: false });
 
   useEffect(() => {
     checkAuthStatus();
@@ -16,50 +18,63 @@ export const useAuth = () => {
 
   const checkAuthStatus = async () => {
     try {
-      const token = localStorage.getItem('auth_token');
-      if (!token) {
-        setLoading(false);
-        return;
-      }
-
-      // TODO: API Call - Verify token with backend
-      // const response = await apiClient.get('/auth/verify');
-      // setUser(response.data.user);
+      const response = await axios.get(`${API_BASE_URL}/auth/status`);
+      const status = response.data;
+      setAuthStatus(status);
       
-      // Mock data for development
-      setUser({ name: 'User', email: 'user@example.com' });
-      setIsAuthenticated(true);
+      // User is authenticated if Google is connected
+      if (status.google && status.google.connected) {
+        setIsAuthenticated(true);
+        setUser({ name: 'User', email: 'user@example.com' });
+      } else {
+        setIsAuthenticated(false);
+        setUser(null);
+      }
     } catch (error) {
       console.error('Auth check failed:', error);
-      localStorage.removeItem('auth_token');
       setIsAuthenticated(false);
+      setUser(null);
     } finally {
       setLoading(false);
     }
   };
 
-  const login = async (googleToken) => {
+  const initiateGoogleLogin = async () => {
     try {
-      // TODO: API Call - Exchange Google token for backend JWT
-      // const response = await apiClient.post('/auth/google', { token: googleToken });
-      // localStorage.setItem('auth_token', response.data.token);
-      // setUser(response.data.user);
+      // Get OAuth authorization URL from backend
+      const response = await axios.get(`${API_BASE_URL}/auth/google`);
+      const { authorization_url } = response.data;
       
-      // Mock implementation
-      localStorage.setItem('auth_token', 'mock_token_' + googleToken);
-      setIsAuthenticated(true);
-      return true;
+      // Redirect user to Google OAuth
+      window.location.href = authorization_url;
     } catch (error) {
-      console.error('Login failed:', error);
-      return false;
+      console.error('Failed to initiate Google login:', error);
+      throw error;
     }
   };
 
-  const logout = () => {
-    localStorage.removeItem('auth_token');
-    setIsAuthenticated(false);
-    setUser(null);
+  const logout = async () => {
+    try {
+      // Disconnect Google
+      if (authStatus.google?.connected) {
+        await axios.post(`${API_BASE_URL}/auth/disconnect/google`);
+      }
+    } catch (error) {
+      console.error('Logout failed:', error);
+    } finally {
+      setIsAuthenticated(false);
+      setUser(null);
+      setAuthStatus({ google: false, notion: false });
+    }
   };
 
-  return { isAuthenticated, user, loading, login, logout };
+  return { 
+    isAuthenticated, 
+    user, 
+    loading, 
+    authStatus,
+    initiateGoogleLogin, 
+    logout, 
+    checkAuthStatus 
+  };
 };
