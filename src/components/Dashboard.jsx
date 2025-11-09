@@ -7,6 +7,9 @@ import SerenityBreak from './SerenityBreak';
 import axios from 'axios';
 import { API_BASE_URL } from '../utils/constants';
 import { useBreakScheduler } from '../hooks/useBreakScheduler';
+import { useTheme } from '../hooks/useTheme.jsx';
+import { useTimezone } from '../hooks/useTimezone.jsx';
+import { hexToRgba } from '../utils/hexToRgb';
 
 /**
  * Main Dashboard - displays calendar, breaks, and mood summary
@@ -18,26 +21,33 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const { upcomingBreak } = useBreakScheduler();
+  const { themeColors } = useTheme();
+  const { timezone } = useTimezone();
+  
+  // Memoize schedule data to prevent unnecessary re-fetches
+  const [lastFetchTime, setLastFetchTime] = useState(0);
 
   useEffect(() => {
     loadDashboardData();
     
-    // Refresh data every 2 minutes
-    const interval = setInterval(loadDashboardData, 2 * 60 * 1000);
+    // Refresh data every 5 minutes (increased from 2 to reduce API calls and Gemini usage)
+    const interval = setInterval(loadDashboardData, 5 * 60 * 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [timezone]); // Reload when timezone changes
 
-  const loadDashboardData = async () => {
+  const loadDashboardData = async (forceRefresh = false) => {
     try {
       setLoading(true);
       setError(null);
       const response = await axios.get(`${API_BASE_URL}/api/serenity/schedule`, {
         params: {
           max_events: 10,
-          max_pages: 10
+          max_pages: 10,
+          timezone: timezone || Intl.DateTimeFormat().resolvedOptions().timeZone
         }
       });
       setScheduleData(response.data);
+      setLastFetchTime(Date.now());
     } catch (err) {
       console.error('Failed to load dashboard:', err);
       setError('Failed to load schedule. Please try again.');
@@ -58,8 +68,23 @@ const Dashboard = () => {
         animate={{ opacity: 1, y: 0 }}
         className="glass-card p-6"
       >
-        <h2 className="text-3xl font-bold text-ocean-800 mb-2">Welcome back 🌊</h2>
-        <p className="text-ocean-600">Here's your schedule and wellness insights for today.</p>
+        <h2 
+          className="text-3xl font-bold mb-2"
+          style={{
+            color: themeColors ? themeColors.text : '#075985',
+            transition: 'color 0.5s ease-in-out'
+          }}
+        >
+          Welcome back
+        </h2>
+        <p 
+          style={{
+            color: themeColors ? themeColors.textLight : '#0284c7',
+            transition: 'color 0.5s ease-in-out'
+          }}
+        >
+          Here's your schedule and wellness insights for today.
+        </p>
       </motion.div>
 
       {/* Upcoming Break Alert */}
@@ -73,7 +98,14 @@ const Dashboard = () => {
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
-              className="glass-card p-6 border-2 border-ocean-300 serenity-gradient"
+              className="glass-card p-6 border-2"
+              style={{
+                borderColor: themeColors ? hexToRgba(themeColors.primary, 0.5) : '#7dd3fc',
+                background: themeColors 
+                  ? `linear-gradient(135deg, ${hexToRgba(themeColors.backgroundStart, 0.8)} 0%, ${hexToRgba(themeColors.backgroundEnd, 0.8)} 100%)`
+                  : 'linear-gradient(135deg, #e8f4f8 0%, #b8dde6 50%, #7fb3c2 100%)',
+                transition: 'all 0.5s ease-in-out'
+              }}
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-4">
@@ -81,11 +113,33 @@ const Dashboard = () => {
                     <span className="text-2xl">🧘</span>
                   </div>
                   <div>
-                    <h3 className="text-lg font-semibold text-ocean-800">Time for a Serenity Break</h3>
-                    <p className="text-ocean-600 text-sm">
+                    <h3 
+                      className="text-lg font-semibold"
+                      style={{
+                        color: themeColors ? themeColors.text : '#075985',
+                        transition: 'color 0.5s ease-in-out'
+                      }}
+                    >
+                      Time for a Serenity Break
+                    </h3>
+                    <p 
+                      className="text-sm"
+                      style={{
+                        color: themeColors ? themeColors.textLight : '#0284c7',
+                        transition: 'color 0.5s ease-in-out'
+                      }}
+                    >
                       {nextBreak.activity} break recommended in {minutesUntil} minutes
                     </p>
-                    <p className="text-ocean-500 text-xs mt-1">{nextBreak.reason}</p>
+                    <p 
+                      className="text-xs mt-1"
+                      style={{
+                        color: themeColors ? hexToRgba(themeColors.textLight, 0.8) : '#0ea5e9',
+                        transition: 'color 0.5s ease-in-out'
+                      }}
+                    >
+                      {nextBreak.reason}
+                    </p>
                   </div>
                 </div>
                 <button onClick={handleTakeBreak} className="btn-primary">
@@ -120,22 +174,23 @@ const Dashboard = () => {
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.2 }}
         >
-          <MoodSummary />
+          <MoodSummary wellnessMetrics={scheduleData?.wellness_metrics} />
         </motion.div>
       </div>
 
-      {/* Break Timeline */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3 }}
-      >
-        <BreakTimeline 
-          events={scheduleData?.events || []}
-          breakSuggestions={scheduleData?.break_suggestions || []}
-          loading={loading}
-        />
-      </motion.div>
+             {/* Break Timeline */}
+             <motion.div
+               initial={{ opacity: 0, y: 20 }}
+               animate={{ opacity: 1, y: 0 }}
+               transition={{ delay: 0.3 }}
+             >
+               <BreakTimeline 
+                 events={scheduleData?.events || []}
+                 breakSuggestions={scheduleData?.break_suggestions || []}
+                 loading={loading}
+                 onBreaksUpdate={() => loadDashboardData(true)}
+               />
+             </motion.div>
 
       {/* Serenity Break Modal */}
       {showBreakModal && (

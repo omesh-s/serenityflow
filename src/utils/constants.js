@@ -18,8 +18,32 @@ export const MIN_BREAK_INTERVAL = 30; // minutes between meetings
 
 // Theme Settings
 export const SOUND_THEMES = [
-  { id: 'ocean', name: 'Ocean Waves', icon: '🌊' },
-  { id: 'forest', name: 'Forest Sounds', icon: '🌲' },
-  { id: 'rain', name: 'Gentle Rain', icon: '🌧️' },
-  { id: 'wind', name: 'Wind Chimes', icon: '🎐' },
+  { 
+    id: 'ocean', 
+    name: 'Ocean Waves', 
+    icon: '🌊',
+    previewText: 'gentle ocean waves crashing softly on the shore',
+    colorClass: 'theme-ocean'
+  },
+  { 
+    id: 'forest', 
+    name: 'Forest Sounds', 
+    icon: '🌲',
+    previewText: 'peaceful forest with birds chirping and leaves rustling',
+    colorClass: 'theme-forest'
+  },
+  { 
+    id: 'rain', 
+    name: 'Gentle Rain', 
+    icon: '🌧️',
+    previewText: 'gentle rain falling softly on leaves',
+    colorClass: 'theme-rain'
+  },
+  { 
+    id: 'wind', 
+    name: 'Wind Chimes', 
+    icon: '🎐',
+    previewText: 'delicate wind chimes tinkling in a gentle breeze',
+    colorClass: 'theme-wind'
+  },
 ];

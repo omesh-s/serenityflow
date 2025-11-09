@@ -3,28 +3,81 @@ import { Link, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { IoHomeOutline, IoSettingsOutline, IoLogOutOutline } from 'react-icons/io5';
 import { useAuth } from '../hooks/useAuth';
+import { useTheme } from '../hooks/useTheme.jsx';
+import { hexToRgba } from '../utils/hexToRgb';
+import logo from '../assets/SerenityLogo.png';
 
 const Layout = ({ children }) => {
   const location = useLocation();
   const { user, logout } = useAuth();
+  const { themeColors } = useTheme();
+  
+  // Get theme-based background gradient
+  const getBackgroundStyle = () => {
+    if (!themeColors) {
+      return 'bg-gradient-to-br from-ocean-50 via-calm-mist to-serenity-light';
+    }
+    return {
+      background: `linear-gradient(135deg, ${themeColors.backgroundStart} 0%, #f5f9fa 50%, ${themeColors.backgroundEnd} 100%)`,
+    };
+  };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-ocean-50 via-calm-mist to-serenity-light relative overflow-hidden">
-      {/* Animated background waves */}
+    <div 
+      className="min-h-screen relative overflow-hidden transition-all duration-500 ease-in-out"
+      style={getBackgroundStyle()}
+    >
+      {/* Animated background waves with theme colors */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-1/2 -left-1/4 w-96 h-96 bg-ocean-200/20 rounded-full blur-3xl animate-float"></div>
-        <div className="absolute top-1/3 -right-1/4 w-[600px] h-[600px] bg-serenity/30 rounded-full blur-3xl animate-wave"></div>
-        <div className="absolute bottom-0 left-1/3 w-96 h-96 bg-ocean-300/20 rounded-full blur-3xl animate-float" style={{ animationDelay: '2s' }}></div>
+        <motion.div 
+          className="absolute -top-1/2 -left-1/4 w-96 h-96 rounded-full blur-3xl animate-float"
+          style={{ 
+            backgroundColor: themeColors ? hexToRgba(themeColors.primaryLight, 0.2) : 'rgba(14, 165, 233, 0.2)',
+            transition: 'background-color 0.5s ease-in-out'
+          }}
+        ></motion.div>
+        <motion.div 
+          className="absolute top-1/3 -right-1/4 w-[600px] h-[600px] rounded-full blur-3xl animate-wave"
+          style={{ 
+            backgroundColor: themeColors ? hexToRgba(themeColors.primary, 0.3) : 'rgba(184, 221, 230, 0.3)',
+            transition: 'background-color 0.5s ease-in-out'
+          }}
+        ></motion.div>
+        <motion.div 
+          className="absolute bottom-0 left-1/3 w-96 h-96 rounded-full blur-3xl animate-float" 
+          style={{ 
+            animationDelay: '2s',
+            backgroundColor: themeColors ? hexToRgba(themeColors.accent, 0.2) : 'rgba(14, 165, 233, 0.2)',
+            transition: 'background-color 0.5s ease-in-out'
+          }}
+        ></motion.div>
       </div>
 
       {/* Navigation */}
       <nav className="relative z-10 glass-card mx-4 mt-4 px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <Link to="/" className="flex items-center space-x-3 group">
-            <div className="w-10 h-10 rounded-full ocean-gradient flex items-center justify-center group-hover:scale-110 transition-transform">
-              <span className="text-white text-xl">🌊</span>
-            </div>
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-ocean-600 to-ocean-400 bg-clip-text text-transparent">
+            <motion.div 
+              className="w-10 h-10 flex items-center justify-center group-hover:scale-110 transition-transform"
+              style={{
+                transition: 'transform 0.3s ease-in-out'
+              }}
+            >
+              <img 
+                src={logo} 
+                alt="SerenityFlow Logo" 
+                className="w-full h-full object-contain"
+              />
+            </motion.div>
+            <h1 
+              className="text-2xl font-bold bg-clip-text text-transparent"
+              style={{
+                backgroundImage: themeColors
+                  ? `linear-gradient(to right, ${themeColors.primaryDark}, ${themeColors.primary})`
+                  : 'linear-gradient(to right, #0369a1, #0ea5e9)',
+                transition: 'background-image 0.5s ease-in-out'
+              }}
+            >
               SerenityFlow
             </h1>
           </Link>
@@ -38,11 +91,37 @@ const Layout = ({ children }) => {
             </NavLink>
             
             {user && (
-              <div className="flex items-center space-x-4 ml-4 pl-4 border-l border-ocean-200">
-                <span className="text-sm text-ocean-600">{user.name}</span>
+              <div 
+                className="flex items-center space-x-4 ml-4 pl-4 border-l"
+                style={{
+                  borderColor: themeColors ? hexToRgba(themeColors.primary, 0.25) : 'rgba(14, 165, 233, 0.2)',
+                  transition: 'border-color 0.5s ease-in-out'
+                }}
+              >
+                <span 
+                  className="text-sm"
+                  style={{
+                    color: themeColors ? themeColors.textLight : '#0284c7',
+                    transition: 'color 0.5s ease-in-out'
+                  }}
+                >
+                  {user.name}
+                </span>
                 <button
                   onClick={logout}
-                  className="p-2 text-ocean-600 hover:text-ocean-800 hover:bg-ocean-50 rounded-lg transition-colors"
+                  className="p-2 rounded-lg transition-colors"
+                  style={{
+                    color: themeColors ? themeColors.textLight : '#0284c7',
+                    transition: 'all 0.3s ease-in-out'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (themeColors) {
+                      e.currentTarget.style.backgroundColor = hexToRgba(themeColors.primaryLight, 0.1);
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                  }}
                   title="Logout"
                 >
                   <IoLogOutOutline size={20} />
@@ -61,18 +140,47 @@ const Layout = ({ children }) => {
   );
 };
 
-const NavLink = ({ to, icon: Icon, active, children }) => (
-  <Link
-    to={to}
-    className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-all ${
-      active
-        ? 'bg-ocean-500 text-white shadow-lg'
-        : 'text-ocean-600 hover:bg-ocean-50'
-    }`}
-  >
-    <Icon size={20} />
-    <span className="font-medium">{children}</span>
-  </Link>
-);
+const NavLink = ({ to, icon: Icon, active, children }) => {
+  const { themeColors } = useTheme();
+  
+  // Get hover color with opacity
+  const getHoverColor = () => {
+    if (!themeColors) return 'rgba(14, 165, 233, 0.1)';
+    try {
+      return hexToRgba(themeColors.primary, 0.1);
+    } catch (e) {
+      return 'rgba(14, 165, 233, 0.1)';
+    }
+  };
+  
+  return (
+    <Link
+      to={to}
+      className="flex items-center space-x-2 px-4 py-2 rounded-lg transition-all duration-300"
+      style={{
+        backgroundColor: active && themeColors ? themeColors.primary : 'transparent',
+        color: active ? 'white' : (themeColors ? themeColors.text : '#0284c7'),
+        transition: 'all 0.3s ease-in-out'
+      }}
+      onMouseEnter={(e) => {
+        if (!active && themeColors) {
+          try {
+            e.currentTarget.style.backgroundColor = getHoverColor();
+          } catch (err) {
+            // Ignore hover errors
+          }
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (!active) {
+          e.currentTarget.style.backgroundColor = 'transparent';
+        }
+      }}
+    >
+      <Icon size={20} />
+      <span className="font-medium">{children}</span>
+    </Link>
+  );
+};
 
 export default Layout;

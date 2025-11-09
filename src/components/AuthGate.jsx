@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useAuth } from '../hooks/useAuth';
+import logo from '../assets/SerenityLogo.png';
 
 /**
  * Authentication page with Google OAuth
@@ -65,8 +66,13 @@ const AuthGate = () => {
       >
         {/* Logo */}
         <div className="mb-8">
-          <div className="w-20 h-20 mx-auto rounded-full ocean-gradient flex items-center justify-center mb-4 animate-breath">
-            <span className="text-4xl">🌊</span>
+          <div className="w-24 h-24 mx-auto mb-4 flex items-center justify-center">
+            <img 
+              src={logo} 
+              alt="SerenityFlow Logo" 
+              className="w-full h-full object-contain"
+              style={{ maxWidth: '96px', maxHeight: '96px' }}
+            />
           </div>
           <h1 className="text-4xl font-bold bg-gradient-to-r from-ocean-600 to-ocean-400 bg-clip-text text-transparent mb-2">
             SerenityFlow

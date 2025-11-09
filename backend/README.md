@@ -83,10 +83,10 @@ API documentation will be available at `http://localhost:8000/docs`
 - `POST /auth/disconnect/{service}` - Disconnect a service (google or notion)
 
 ### Serenity
-- `GET /api/serenity/schedule` - Get schedule with break suggestions
+- `GET /api/serenity/schedule` - Get schedule with break suggestions and wellness metrics
   - Query parameters:
     - `max_events` (default: 10) - Maximum number of calendar events
-    - `max_pages` (default: 10) - Maximum number of Notion pages
+    - `max_pages` (default: 10) - Maximum number of Notion pages (wellness analysis uses up to 50)
   - Returns:
     ```json
     {
@@ -99,7 +99,32 @@ API documentation will be available at `http://localhost:8000/docs`
           "activity": "meditation",
           "reason": "Gap between back-to-back meetings"
         }
-      ]
+      ],
+      "wellness_metrics": {
+        "wellness_score": 75.5,
+        "completion_rate": 65.0,
+        "peak_productivity_hours": "10:00 AM - 12:00 PM",
+        "insights": ["High completion rate (65%) - Great productivity!"]
+      }
+    }
+    ```
+
+### Wellness
+- `GET /api/wellness` - Get wellness analytics from Notion notes
+  - Query parameters:
+    - `max_notes` (default: 50) - Maximum number of notes to analyze
+  - Returns:
+    ```json
+    {
+      "wellness_score": 75.5,
+      "completion_rate": 65.0,
+      "peak_productivity_hours": "10:00 AM - 12:00 PM",
+      "insights": [
+        "High completion rate (65%) - Great productivity!",
+        "Peak productivity hours: 10 AM - 12 PM"
+      ],
+      "total_notes": 25,
+      "analyzed_notes": 25
     }
     ```
 

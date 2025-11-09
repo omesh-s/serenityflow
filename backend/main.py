@@ -28,6 +28,18 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(serenity.router, prefix="/api/serenity", tags=["serenity"])
 
+# Import and include wellness router
+from routes import wellness
+app.include_router(wellness.router, prefix="/api/wellness", tags=["wellness"])
+
+# Import and include audio router
+from routes import audio
+app.include_router(audio.router, prefix="/api/audio", tags=["audio"])
+
+# Import and include breaks router
+from routes import breaks
+app.include_router(breaks.router, prefix="/api/breaks", tags=["breaks"])
+
 
 @app.get("/")
 async def root():

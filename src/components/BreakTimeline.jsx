@@ -1,98 +1,275 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
+import { IoCreateOutline, IoAddOutline } from 'react-icons/io5';
+import BreakEditor from './BreakEditor';
+import { getBreakType } from '../utils/breakTypes';
+import axios from 'axios';
+import { API_BASE_URL } from '../utils/constants';
+import { useTimezone } from '../hooks/useTimezone.jsx';
 
 /**
  * Break Timeline Component - visualizes recommended break windows and calendar events
- * Displays calendar events and AI-generated break suggestions
+ * Displays calendar events and AI-generated break suggestions with editing capabilities
  */
-const BreakTimeline = ({ events = [], breakSuggestions = [], loading = false }) => {
+const BreakTimeline = ({ events = [], breakSuggestions = [], loading = false, onBreaksUpdate }) => {
+  const [editingBreak, setEditingBreak] = useState(null);
+  const [addingBreak, setAddingBreak] = useState(false);
+  const { timezone } = useTimezone();
+  
   // Combine events and break suggestions into a timeline
   const timeSlots = useMemo(() => {
     const slots = [];
     const now = new Date();
     
-    // Add events as meetings
+    // Helper to get UTC timestamp for accurate sorting
+    // Always use UTC for sorting to ensure breaks and meetings are in correct order
+    const getSortTime = (date) => {
+      if (!date) return 0;
+      const d = date instanceof Date ? date : new Date(date);
+      if (isNaN(d.getTime())) return 0;
+      // getTime() returns UTC timestamp in milliseconds - perfect for sorting
+      return d.getTime();
+    };
+    
+    // Parse and add events as meetings
+    const parsedEvents = [];
     events.forEach(event => {
       const start = new Date(event.start);
       const end = new Date(event.end);
       const duration = Math.round((end - start) / 60000); // duration in minutes
       
       if (end > now) { // Only show future events
-        slots.push({
+        const eventSlot = {
           time: start,
+          sortTime: getSortTime(start), // Use UTC timestamp for sorting
+          endTime: end,
+          endSortTime: getSortTime(end),
           type: 'meeting',
           duration: duration,
           title: event.summary || 'Meeting',
           location: event.location,
           attendees: event.attendees,
           htmlLink: event.htmlLink,
-        });
+        };
+        slots.push(eventSlot);
+        parsedEvents.push(eventSlot);
       }
     });
     
-    // Add break suggestions
+    // Add break suggestions - show all future breaks (backend validates placement)
     breakSuggestions.forEach(breakSuggestion => {
       const breakTime = new Date(breakSuggestion.time);
+      const breakType = getBreakType(breakSuggestion.activity);
       
-      if (breakTime > now) { // Only show future breaks
+      // Only show future breaks
+      if (breakTime > now) {
         slots.push({
+          id: breakSuggestion.id || `break_${breakTime.getTime()}`,
           time: breakTime,
+          sortTime: getSortTime(breakTime), // Use UTC timestamp for sorting
           type: 'break',
           duration: breakSuggestion.duration,
-          title: `${breakSuggestion.activity.charAt(0).toUpperCase() + breakSuggestion.activity.slice(1)} Break`,
+          title: breakType.name,
           activity: breakSuggestion.activity,
           reason: breakSuggestion.reason,
+          description: breakSuggestion.description || breakType.description,
+          icon: breakSuggestion.icon || breakType.icon,
+          color: breakType.color,
           recommended: true,
+          breakData: breakSuggestion,
         });
       }
     });
     
-    // Sort by time
-    slots.sort((a, b) => a.time - b.time);
+    // Sort all slots by UTC timestamp (sortTime) to ensure correct chronological order
+    // This ensures breaks and meetings are mixed correctly regardless of timezone
+    slots.sort((a, b) => (a.sortTime || a.time.getTime()) - (b.sortTime || b.time.getTime()));
     
-    // Limit to next 10 items
-    return slots.slice(0, 10);
-  }, [events, breakSuggestions]);
+    // Limit to next 20 items to show more context
+    return slots.slice(0, 20);
+  }, [events, breakSuggestions, timezone]);
   
   const formatTime = (date) => {
-    return date.toLocaleTimeString('en-US', { 
-      hour: 'numeric', 
-      minute: '2-digit', 
-      hour12: true 
-    });
+    if (!date) return '';
+    const d = date instanceof Date ? date : new Date(date);
+    if (isNaN(d.getTime())) return '';
+    
+    // Format in user's selected timezone
+    try {
+      return new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      }).format(d);
+    } catch (e) {
+      // Fallback to local timezone if timezone is invalid
+      return d.toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      });
+    }
   };
   
   const formatDate = (date) => {
+    if (!date) return '';
+    const d = date instanceof Date ? date : new Date(date);
+    if (isNaN(d.getTime())) return '';
+    
     const today = new Date();
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
     
-    if (date.toDateString() === today.toDateString()) {
-      return 'Today';
-    } else if (date.toDateString() === tomorrow.toDateString()) {
-      return 'Tomorrow';
-    } else {
-      return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    // Get date in user's timezone for comparison
+    try {
+      const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      });
+      
+      const dateParts = formatter.formatToParts(d);
+      const year = parseInt(dateParts.find(p => p.type === 'year').value);
+      const month = parseInt(dateParts.find(p => p.type === 'month').value) - 1;
+      const day = parseInt(dateParts.find(p => p.type === 'day').value);
+      const userDate = new Date(year, month, day);
+      
+      const todayParts = formatter.formatToParts(today);
+      const todayYear = parseInt(todayParts.find(p => p.type === 'year').value);
+      const todayMonth = parseInt(todayParts.find(p => p.type === 'month').value) - 1;
+      const todayDay = parseInt(todayParts.find(p => p.type === 'day').value);
+      const userToday = new Date(todayYear, todayMonth, todayDay);
+      
+      const tomorrowParts = formatter.formatToParts(tomorrow);
+      const tomorrowYear = parseInt(tomorrowParts.find(p => p.type === 'year').value);
+      const tomorrowMonth = parseInt(tomorrowParts.find(p => p.type === 'month').value) - 1;
+      const tomorrowDay = parseInt(tomorrowParts.find(p => p.type === 'day').value);
+      const userTomorrow = new Date(tomorrowYear, tomorrowMonth, tomorrowDay);
+      
+      if (userDate.getTime() === userToday.getTime()) {
+        return 'Today';
+      } else if (userDate.getTime() === userTomorrow.getTime()) {
+        return 'Tomorrow';
+      } else {
+        return new Intl.DateTimeFormat('en-US', {
+          timeZone: timezone,
+          weekday: 'short',
+          month: 'short',
+          day: 'numeric'
+        }).format(d);
+      }
+    } catch (e) {
+      // Fallback to local timezone
+      if (d.toDateString() === today.toDateString()) {
+        return 'Today';
+      } else if (d.toDateString() === tomorrow.toDateString()) {
+        return 'Tomorrow';
+      } else {
+        return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+      }
     }
   };
 
-  const getSlotColor = (type, recommended) => {
-    if (recommended) return 'bg-gradient-to-r from-serenity to-serenity-dark';
+  const getSlotColor = (type, recommended, color) => {
+    if (type === 'break' && recommended) {
+      return 'bg-gradient-to-r from-serenity to-serenity-dark';
+    }
+    if (type === 'break') {
+      // Use a light version of the break type color
+      return 'bg-ocean-200';
+    }
     switch (type) {
       case 'meeting': return 'bg-ocean-500';
-      case 'break': return 'bg-ocean-200';
       case 'work': return 'bg-ocean-100';
       default: return 'bg-gray-200';
     }
   };
 
-  const getSlotIcon = (type) => {
+  const getSlotStyle = (type, color) => {
+    if (type === 'break' && color) {
+      // Use inline style for dynamic colors
+      const rgb = hexToRgb(color);
+      return {
+        backgroundColor: `rgba(${rgb}, 0.2)`,
+        borderColor: color,
+        borderWidth: '2px',
+      };
+    }
+    return {};
+  };
+
+  const hexToRgb = (hex) => {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result 
+      ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}`
+      : '14, 165, 233';
+  };
+
+  const getSlotIcon = (type, icon) => {
+    if (icon) return icon;
     switch (type) {
       case 'meeting': return '📅';
       case 'break': return '🧘';
       case 'work': return '💻';
       default: return '•';
     }
+  };
+
+  const handleBreakSave = async (breakData) => {
+    try {
+      // Save break customization via API
+      await axios.post(`${API_BASE_URL}/api/breaks/customize`, {
+        breaks: [breakData],
+        user_id: "default", // In production, get from auth
+      });
+      
+      // Notify parent component to refresh breaks
+      if (onBreaksUpdate) {
+        onBreaksUpdate();
+      }
+      
+      setEditingBreak(null);
+      setAddingBreak(false);
+    } catch (error) {
+      console.error('Error saving break:', error);
+      alert('Failed to save break. Please try again.');
+    }
+  };
+
+  const handleBreakDelete = async (breakId) => {
+    try {
+      await axios.delete(`${API_BASE_URL}/api/breaks/${breakId}`, {
+        params: { user_id: "default" }
+      });
+      
+      if (onBreaksUpdate) {
+        onBreaksUpdate();
+      }
+      
+      setEditingBreak(null);
+    } catch (error) {
+      console.error('Error deleting break:', error);
+      alert('Failed to delete break. Please try again.');
+    }
+  };
+
+  const handleAddBreak = () => {
+    // Find a good time slot (after next event or in a gap)
+    const now = new Date();
+    const nextEvent = events.find(e => new Date(e.start) > now);
+    const defaultTime = nextEvent 
+      ? new Date(new Date(nextEvent.end).getTime() + 5 * 60000) // 5 minutes after next event
+      : new Date(now.getTime() + 30 * 60000); // 30 minutes from now
+    
+    setEditingBreak({
+      time: defaultTime.toISOString(),
+      duration: 10,
+      activity: 'meditation',
+      reason: '',
+    });
+    setAddingBreak(true);
   };
 
   if (loading) {
@@ -110,14 +287,23 @@ const BreakTimeline = ({ events = [], breakSuggestions = [], loading = false }) 
 
   return (
     <div className="glass-card p-6">
-      <h3 className="text-xl font-semibold text-ocean-800 mb-6">
-        Today's Flow & Break Windows
-        {timeSlots.length > 0 && (
-          <span className="ml-2 text-sm font-normal text-ocean-500">
-            ({timeSlots.length} {timeSlots.length === 1 ? 'item' : 'items'})
-          </span>
-        )}
-      </h3>
+      <div className="flex items-center justify-between mb-6">
+        <h3 className="text-xl font-semibold text-ocean-800">
+          Today's Flow & Break Windows
+          {timeSlots.length > 0 && (
+            <span className="ml-2 text-sm font-normal text-ocean-500">
+              ({timeSlots.length} {timeSlots.length === 1 ? 'item' : 'items'})
+            </span>
+          )}
+        </h3>
+        <button
+          onClick={handleAddBreak}
+          className="px-4 py-2 bg-ocean-500 text-white rounded-lg hover:bg-ocean-600 transition-colors flex items-center space-x-2 text-sm"
+        >
+          <IoAddOutline size={18} />
+          <span>Add Break</span>
+        </button>
+      </div>
 
       {timeSlots.length === 0 ? (
         <div className="text-center py-8 text-ocean-500">
@@ -154,15 +340,24 @@ const BreakTimeline = ({ events = [], breakSuggestions = [], loading = false }) 
                   {/* Slot card */}
                   <div className="flex-1 ml-4">
                     <div 
-                      className={`${getSlotColor(slot.type, slot.recommended)} rounded-lg px-4 py-3 cursor-pointer transition-transform hover:scale-[1.02] ${
-                        slot.recommended ? 'shadow-lg border-2 border-serenity-dark' : 'shadow-sm'
-                      } ${slot.htmlLink ? 'hover:shadow-md' : ''}`}
-                      onClick={() => slot.htmlLink && window.open(slot.htmlLink, '_blank')}
+                      className={`${getSlotColor(slot.type, slot.recommended, slot.color)} rounded-lg px-4 py-3 transition-transform hover:scale-[1.02] ${
+                        slot.recommended && slot.type === 'break' ? 'shadow-lg border-2 border-serenity-dark' : 'shadow-sm border-2'
+                      } ${slot.htmlLink ? 'cursor-pointer hover:shadow-md' : ''} ${
+                        slot.type === 'break' ? 'cursor-pointer' : ''
+                      }`}
+                      style={slot.type === 'break' ? getSlotStyle(slot.type, slot.color) : {}}
+                      onClick={() => {
+                        if (slot.htmlLink) {
+                          window.open(slot.htmlLink, '_blank');
+                        } else if (slot.type === 'break') {
+                          setEditingBreak(slot.breakData || slot);
+                        }
+                      }}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex-1">
                           <div className="flex items-center space-x-2">
-                            <span>{getSlotIcon(slot.type)}</span>
+                            <span>{getSlotIcon(slot.type, slot.icon)}</span>
                             <span className={`font-medium ${
                               slot.type === 'meeting' ? 'text-white' : 
                               slot.recommended ? 'text-ocean-800' : 
@@ -170,9 +365,24 @@ const BreakTimeline = ({ events = [], breakSuggestions = [], loading = false }) 
                             }`}>
                               {slot.title}
                             </span>
+                            {slot.type === 'break' && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingBreak(slot.breakData || slot);
+                                }}
+                                className="ml-2 text-ocean-600 hover:text-ocean-800 transition-colors"
+                                title="Edit break"
+                              >
+                                <IoCreateOutline size={16} />
+                              </button>
+                            )}
                           </div>
                           {slot.reason && (
                             <p className="text-xs text-ocean-600 mt-1 ml-7">{slot.reason}</p>
+                          )}
+                          {slot.description && (
+                            <p className="text-xs text-ocean-500 mt-1 ml-7">{slot.description}</p>
                           )}
                           {slot.location && (
                             <p className="text-xs text-ocean-400 mt-1 ml-7">📍 {slot.location}</p>
@@ -208,6 +418,20 @@ const BreakTimeline = ({ events = [], breakSuggestions = [], loading = false }) 
             </div>
           </div>
         </>
+      )}
+
+      {/* Break Editor Modal */}
+      {(editingBreak || addingBreak) && (
+        <BreakEditor
+          breakItem={editingBreak}
+          onSave={handleBreakSave}
+          onDelete={handleBreakDelete}
+          onCancel={() => {
+            setEditingBreak(null);
+            setAddingBreak(false);
+          }}
+          events={events}
+        />
       )}
     </div>
   );

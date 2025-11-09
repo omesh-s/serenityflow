@@ -1,14 +1,26 @@
 import React from 'react';
 import { IoCalendarOutline, IoTimeOutline, IoPeopleOutline } from 'react-icons/io5';
+import { useTimezone } from '../hooks/useTimezone.jsx';
 
 /**
  * Meeting List Component - displays upcoming meetings from Google Calendar
  * Connects to backend /api/serenity/schedule endpoint
  */
 const MeetingList = ({ loading, events = [], error }) => {
+  const { timezone } = useTimezone();
+  
   const formatTime = (dateString) => {
     const date = new Date(dateString);
-    return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    try {
+      return new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      }).format(date);
+    } catch (e) {
+      return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    }
   };
 
   const formatDate = (dateString) => {
@@ -17,12 +29,38 @@ const MeetingList = ({ loading, events = [], error }) => {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
     
-    if (date.toDateString() === today.toDateString()) {
-      return 'Today';
-    } else if (date.toDateString() === tomorrow.toDateString()) {
-      return 'Tomorrow';
-    } else {
-      return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    try {
+      const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      });
+      
+      const dateStr = formatter.format(date);
+      const todayStr = formatter.format(today);
+      const tomorrowStr = formatter.format(tomorrow);
+      
+      if (dateStr === todayStr) {
+        return 'Today';
+      } else if (dateStr === tomorrowStr) {
+        return 'Tomorrow';
+      } else {
+        return new Intl.DateTimeFormat('en-US', {
+          timeZone: timezone,
+          weekday: 'short',
+          month: 'short',
+          day: 'numeric'
+        }).format(date);
+      }
+    } catch (e) {
+      if (date.toDateString() === today.toDateString()) {
+        return 'Today';
+      } else if (date.toDateString() === tomorrow.toDateString()) {
+        return 'Tomorrow';
+      } else {
+        return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+      }
     }
   };
 

@@ -3,9 +3,20 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    --theme-primary: #0ea5e9;
+    --theme-primary-dark: #0369a1;
+    --theme-primary-light: #38bdf8;
+    --theme-accent: #0284c7;
+    --theme-text: #075985;
+    --theme-text-light: #0284c7;
+    --theme-background: linear-gradient(135deg, #e0f2fe 0%, #bae6fd 50%, #7dd3fc 100%);
+  }
+  
   body {
     @apply bg-calm-mist text-ocean-900 antialiased;
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    transition: background-color 0.5s ease-in-out, color 0.5s ease-in-out;
   }
 }
 
@@ -23,15 +34,27 @@
   }
   
   .btn-primary {
-    @apply bg-ocean-500 hover:bg-ocean-600 text-white px-6 py-3 rounded-full 
+    @apply text-white px-6 py-3 rounded-full 
            transition-all duration-300 shadow-lg hover:shadow-xl 
            hover:scale-105 active:scale-95 font-medium;
+    background-color: var(--theme-primary);
+  }
+  
+  .btn-primary:hover {
+    background-color: var(--theme-primary-dark);
   }
   
   .btn-secondary {
     @apply bg-serenity text-ocean-700 px-6 py-3 rounded-full 
            transition-all duration-300 hover:bg-serenity-dark 
            hover:scale-105 active:scale-95 font-medium;
+  }
+  
+  /* Smooth theme transitions */
+  * {
+    transition-property: background-color, border-color, color, fill, stroke;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    transition-duration: 300ms;
   }
 }
 

@@ -44,14 +44,19 @@ def get_notion_pages(access_token: str, page_size: int = 10) -> List[Dict]:
                         title = prop_data["title"][0].get("plain_text", "Untitled")
                         break
             
-            formatted_pages.append({
+            # Return full page data for wellness analysis, but also include formatted version
+            formatted_page = {
                 "id": page.get("id"),
                 "title": title,
                 "url": page.get("url", ""),
                 "created_time": page.get("created_time", ""),
                 "last_edited_time": page.get("last_edited_time", ""),
                 "archived": page.get("archived", False),
-            })
+                # Include full page data for wellness analysis
+                "properties": page.get("properties", {}),
+                "raw_data": page  # Keep full raw data for advanced analysis
+            }
+            formatted_pages.append(formatted_page)
         
         return formatted_pages
     except Exception as e:
