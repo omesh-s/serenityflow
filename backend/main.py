@@ -40,6 +40,23 @@ app.include_router(audio.router, prefix="/api/audio", tags=["audio"])
 from routes import breaks
 app.include_router(breaks.router, prefix="/api/breaks", tags=["breaks"])
 
+# Import and include checklist router
+from routes import checklist
+app.include_router(checklist.router, prefix="/api/checklist", tags=["checklist"])
+
+# Import and include automation router
+from routes import automation
+app.include_router(automation.router, prefix="/api/automation", tags=["automation"])
+
+# Initialize automation scheduler
+try:
+    from utils.automation_scheduler import get_scheduler
+    scheduler = get_scheduler()
+    print("Automation scheduler initialized")
+except Exception as e:
+    print(f"Warning: Could not initialize automation scheduler: {str(e)}")
+    scheduler = None
+
 
 @app.get("/")
 async def root():
