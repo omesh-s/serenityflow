@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { useLocation } from 'react-router-dom';
 import MeetingList from './MeetingList';
@@ -8,6 +8,7 @@ import SerenityBreak from './SerenityBreak';
 import ConvaiWidget from './ConvaiWidget';
 import AutomationChecklist from './AutomationChecklist';
 import MeetingEndedResults from './MeetingEndedResults';
+import ThemeDecorations from './ThemeDecorations';
 import axios from 'axios';
 import { API_BASE_URL } from '../utils/constants';
 import { useBreakScheduler } from '../hooks/useBreakScheduler';
@@ -41,19 +42,26 @@ const Dashboard = () => {
   // Memoize schedule data to prevent unnecessary re-fetches
   const [lastFetchTime, setLastFetchTime] = useState(0);
 
-  // Play startup sound every time user lands on the dashboard (landing page)
+  // Play startup sound only once per session (on first dashboard load)
   useEffect(() => {
     // Only play when we're on the dashboard route (landing page)
     if (location.pathname === '/') {
-      // Play startup sound after a short delay to ensure page is loaded
-      // Note: playStartup already respects mute state via useEventSounds
-      const timer = setTimeout(() => {
-        playStartup();
-      }, 500);
+      // Check if startup sound has already been played in this session
+      const startupPlayed = sessionStorage.getItem('serenity_startup_played');
       
-      return () => clearTimeout(timer);
+      if (!startupPlayed) {
+        // Play startup sound after a short delay to ensure page is loaded
+        // Note: playStartup already respects mute state via useEventSounds
+        const timer = setTimeout(() => {
+          playStartup();
+          // Mark as played in this session
+          sessionStorage.setItem('serenity_startup_played', 'true');
+        }, 500);
+        
+        return () => clearTimeout(timer);
+      }
     }
-  }, [location.pathname, playStartup]); // Plays every time user navigates to dashboard
+  }, [location.pathname, playStartup]); // Only plays once per session
 
   // Load data only once on mount - no automatic refresh
   useEffect(() => {
@@ -111,54 +119,27 @@ const Dashboard = () => {
   const audioRef = useRef(null);
   const audioTimerRef = useRef(null);
 
-  // Stop audio helper (available to modal close and cleanup)
-  const stopCalmingAudio = () => {
-    try {
-      if (audioTimerRef.current) {
-        clearTimeout(audioTimerRef.current);
-        audioTimerRef.current = null;
-      }
-      if (audioRef.current) {
-        try {
-          audioRef.current.pause();
-          audioRef.current.currentTime = 0;
-        } catch (e) {
-          // ignore
-        }
-        audioRef.current = null;
-      }
-    } catch (err) {
-      console.error('Failed to stop calming audio:', err);
+  const stopCalmingAudio = useCallback(() => {
+    if (audioTimerRef.current) {
+      clearTimeout(audioTimerRef.current);
+      audioTimerRef.current = null;
     }
-  };
-
-  // Start calming audio and schedule stop after 5 minutes
-  const startCalmingAudio = (url) => {
-    // Don't play audio if muted
-    if (isMuted) {
-      return;
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      audioRef.current = null;
     }
+  }, []);
 
-    try {
-      // Stop any existing audio first
-      stopCalmingAudio();
-
-      const audio = new Audio(url);
-      audio.loop = true;
-      audio.play().catch((err) => {
-        // autoplay may be blocked by browser policies; user interaction usually allows playback
-        console.warn('Audio playback failed (browser may block autoplay):', err);
-      });
-      audioRef.current = audio;
-
-      // Ensure audio stops after 5 minutes (300000 ms)
-      audioTimerRef.current = window.setTimeout(() => {
-        stopCalmingAudio();
-      }, 5 * 60 * 1000);
-    } catch (err) {
-      console.error('Failed to start calming audio:', err);
-    }
-  };
+  const startCalmingAudio = useCallback((url) => {
+    if (isMuted) return;
+    stopCalmingAudio();
+    const audio = new Audio(url);
+    audio.loop = true;
+    audio.volume = 0.5;
+    audioRef.current = audio;
+    audio.play().catch(() => {});
+  }, [isMuted, stopCalmingAudio]);
 
   const handleTakeBreak = async () => {
     // Get theme sound URL based on current theme
@@ -195,7 +176,28 @@ const Dashboard = () => {
     return () => {
       stopCalmingAudio();
     };
-  }, []);
+  }, [stopCalmingAudio]);
+
+  // Handle mute/unmute and theme audio
+  useEffect(() => {
+    if (isMuted) {
+      stopCalmingAudio();
+      return;
+    }
+
+    if (location.pathname === '/' && currentTheme) {
+      const themeSoundUrl = `${API_BASE_URL}/api/audio/theme/${currentTheme}`;
+      const delay = scheduleData ? 500 : 2000;
+      const timer = setTimeout(() => {
+        if (!isMuted && location.pathname === '/' && currentTheme) {
+          startCalmingAudio(themeSoundUrl);
+        }
+      }, delay);
+      return () => clearTimeout(timer);
+    } else {
+      stopCalmingAudio();
+    }
+  }, [isMuted, location.pathname, currentTheme, startCalmingAudio, stopCalmingAudio, scheduleData]);
 
 
   const handleMeetingEnded = async () => {
@@ -475,6 +477,9 @@ const Dashboard = () => {
           onClose={() => setMeetingEndedResults(null)}
         />
       )}
+
+      {/* Theme-based Decorative Elements */}
+      <ThemeDecorations />
     </div>
   );
 };

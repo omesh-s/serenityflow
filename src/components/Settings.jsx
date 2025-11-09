@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { IoSaveOutline, IoKeyOutline, IoBrushOutline, IoNotificationsOutline, IoCheckmarkCircleOutline, IoCloseCircleOutline, IoTimeOutline } from 'react-icons/io5';
 import { SOUND_THEMES } from '../utils/constants';
@@ -17,7 +17,8 @@ const Settings = () => {
   const { currentTheme, changeTheme, themeColors } = useTheme();
   const { timezone, changeTimezone } = useTimezone();
   
-  const { playPreview } = useSoundPreview();
+  const { playPreview, stopPreview } = useSoundPreview();
+  const isChangingThemeRef = useRef(false);
   const [settings, setSettings] = useState({
     soundTheme: currentTheme || 'ocean',
     timezone: timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -32,6 +33,22 @@ const Settings = () => {
   useEffect(() => {
     loadSettings();
   }, []);
+
+  // Cleanup: Stop any playing preview when component unmounts or theme changes externally
+  useEffect(() => {
+    return () => {
+      stopPreview();
+    };
+  }, [stopPreview]);
+
+  // Stop preview when theme changes externally (not from user input in this component)
+  useEffect(() => {
+    // Only stop preview if theme changed externally (not from our own change)
+    // We check if the current theme matches settings to determine if it's external
+    if (currentTheme !== settings.soundTheme) {
+      stopPreview();
+    }
+  }, [currentTheme, settings.soundTheme, stopPreview]);
 
   // Sync theme with settings
   useEffect(() => {
@@ -99,13 +116,25 @@ const Settings = () => {
   const handleInputChange = (field, value) => {
     setSettings(prev => ({ ...prev, [field]: value }));
     
-    // If changing sound theme, play preview and update theme immediately
+    // If changing sound theme, stop any playing preview, update theme, then play new preview
     if (field === 'soundTheme') {
+      // Stop any currently playing preview first
+      stopPreview();
+      
+      // Update theme immediately
       changeTheme(value);
-      playPreview(value);
+      
       // Auto-save theme change
       const updatedSettings = { ...settings, [field]: value };
       localStorage.setItem('serenity_settings', JSON.stringify(updatedSettings));
+      
+      // Small delay to ensure previous audio stops, then play preview
+      setTimeout(() => {
+        // Only play preview if theme hasn't changed again (user might click multiple themes quickly)
+        if (settings.soundTheme === value || currentTheme === value) {
+          playPreview(value);
+        }
+      }, 150);
     }
   };
 
