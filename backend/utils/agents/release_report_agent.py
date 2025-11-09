@@ -16,7 +16,7 @@ class ReleaseReportAgent(BaseAgent):
         super().__init__(db_session, user_id)
         from utils.gemini import initialize_gemini
         initialize_gemini()
-        self.model = genai.GenerativeModel('gemini-2.5-flash')
+        self.model = genai.GenerativeModel('gemini-2.5-flash-lite')
     
     def run(self, **kwargs) -> Dict[str, Any]:
         """Generate weekly updates, team updates, and release notes.

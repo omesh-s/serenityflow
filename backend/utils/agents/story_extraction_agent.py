@@ -73,16 +73,29 @@ class StoryExtractionAgent(BaseAgent):
                     "checklist_items": []
                 }
         
-        # Get existing stories to avoid duplicates
-        # If force_reprocess is True, we'll still check for duplicate stories but won't skip pages
+        # Get existing stories to avoid duplicates WITHIN THIS RUN
+        # Only check for stories created in the current session/run (last few minutes)
+        # This prevents accumulation across multiple automation runs
+        from datetime import timedelta
+        recent_cutoff = datetime.utcnow() - timedelta(minutes=5)
+        
+        # Only check for stories created very recently (in current run) to avoid duplicates within the same run
+        # Stories from previous runs should have been archived by clear_automation_states()
         existing_stories = self.db.query(Story).filter(
             Story.user_id == self.user_id,
-            Story.status.in_(["pending", "approved"])
+            Story.status.in_(["pending", "approved"]),
+            Story.created_at >= recent_cutoff  # Only check stories from current run (last 5 minutes)
         ).all()
+        
+        # Build sets for duplicate detection within current run only
         existing_source_ids = {s.source_id for s in existing_stories if s.source_id} if not force_reprocess else set()
+        existing_story_titles = {(s.title.lower().strip(), s.source_id) for s in existing_stories if s.title and s.source_id} if not force_reprocess else set()
         
         if force_reprocess:
             self.log_action("Force reprocess mode: Will re-process all pages even if already processed")
+            self.log_action(f"Existing stories in current run (last 5 min): {len(existing_stories)}")
+        else:
+            self.log_action(f"Checking against {len(existing_stories)} existing stories from current run to avoid duplicates")
         
         # Process each page that hasn't been processed yet
         extracted_stories = []
@@ -184,17 +197,29 @@ class StoryExtractionAgent(BaseAgent):
             processed_count += 1
             
             for story_data in stories:
-                # Skip if story already exists (unless force_reprocess is True)
-                # When force_reprocess=True, we allow re-extracting stories even if they already exist
-                # This is useful for testing with the same test data
+                # Skip if story already exists in CURRENT RUN (unless force_reprocess is True)
+                # Check both by query and by in-memory set for efficiency
+                story_title = story_data.get("title", "Untitled Story")
+                title_key = (story_title.lower().strip(), page_id)
+                
                 if not force_reprocess:
+                    # Check in-memory set first (fast)
+                    if title_key in existing_story_titles:
+                        self.log_action(f"Skipping duplicate story: {story_title} (already exists in current run)")
+                        continue
+                    
+                    # Also check database for safety (in case story was just created)
                     existing_story = self.db.query(Story).filter(
-                        Story.title == story_data.get("title", "Untitled Story"),
+                        Story.title == story_title,
                         Story.source_id == page_id,
-                        Story.user_id == self.user_id
+                        Story.user_id == self.user_id,
+                        Story.status.in_(["pending", "approved"]),
+                        Story.created_at >= recent_cutoff  # Only check current run
                     ).first()
                     
                     if existing_story:
+                        # Add to set to prevent future duplicates in this run
+                        existing_story_titles.add(title_key)
                         continue
                 
                 # Auto-approve if confidence ≥ 80%
@@ -223,6 +248,10 @@ class StoryExtractionAgent(BaseAgent):
                 
                 self.db.add(story)
                 extracted_stories.append(story)
+                
+                # Add to existing_story_titles set to prevent duplicates within this run
+                if not force_reprocess:
+                    existing_story_titles.add(title_key)
         
         # Commit all stories
         if extracted_stories:

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
+import { useLocation } from 'react-router-dom';
 import MeetingList from './MeetingList';
 import BreakTimeline from './BreakTimeline';
 import MoodSummary from './MoodSummary';
@@ -13,6 +14,8 @@ import { useBreakScheduler } from '../hooks/useBreakScheduler';
 import { useTheme } from '../hooks/useTheme.jsx';
 import { useTimezone } from '../hooks/useTimezone.jsx';
 import { useAuth } from '../hooks/useAuth';
+import { useEventSounds } from '../hooks/useEventSounds';
+import { useSoundControl } from '../hooks/useSoundControl';
 import { hexToRgba } from '../utils/hexToRgb';
 
 /**
@@ -20,6 +23,7 @@ import { hexToRgba } from '../utils/hexToRgb';
  * Connects to backend API endpoints
  */
 const Dashboard = () => {
+  const location = useLocation();
   const [showBreakModal, setShowBreakModal] = useState(false);
   const [scheduleData, setScheduleData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -28,12 +32,28 @@ const Dashboard = () => {
   const [meetingEndedResults, setMeetingEndedResults] = useState(null);
   const [processingStage, setProcessingStage] = useState('');
   const { upcomingBreak } = useBreakScheduler();
-  const { themeColors } = useTheme();
+  const { themeColors, currentTheme } = useTheme();
   const { timezone } = useTimezone();
   const { user } = useAuth();
+  const { playError, playAccept, playStartup } = useEventSounds();
+  const { isMuted } = useSoundControl();
   
   // Memoize schedule data to prevent unnecessary re-fetches
   const [lastFetchTime, setLastFetchTime] = useState(0);
+
+  // Play startup sound every time user lands on the dashboard (landing page)
+  useEffect(() => {
+    // Only play when we're on the dashboard route (landing page)
+    if (location.pathname === '/') {
+      // Play startup sound after a short delay to ensure page is loaded
+      // Note: playStartup already respects mute state via useEventSounds
+      const timer = setTimeout(() => {
+        playStartup();
+      }, 500);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [location.pathname, playStartup]); // Plays every time user navigates to dashboard
 
   // Load data only once on mount - no automatic refresh
   useEffect(() => {
@@ -79,6 +99,7 @@ const Dashboard = () => {
     } catch (err) {
       console.error('Failed to load dashboard:', err);
       setError('Failed to load schedule. Please try again.');
+      playError();
     } finally {
       if (showLoading) {
         setLoading(false);
@@ -113,6 +134,11 @@ const Dashboard = () => {
 
   // Start calming audio and schedule stop after 5 minutes
   const startCalmingAudio = (url) => {
+    // Don't play audio if muted
+    if (isMuted) {
+      return;
+    }
+
     try {
       // Stop any existing audio first
       stopCalmingAudio();
@@ -135,7 +161,8 @@ const Dashboard = () => {
   };
 
   const handleTakeBreak = async () => {
-    const CALM_AUDIO_URL = '/assets/calm.wav'; // Change this cariable to conditional for 4 phases
+    // Get theme sound URL based on current theme
+    const themeSoundUrl = `${API_BASE_URL}/api/audio/theme/${currentTheme || 'ocean'}`;
     const moodScore = scheduleData?.wellness_metrics?.wellness_score;
     const MOOD_THRESHOLD = 70; 
     console.log('Checking mood score on meeting end:', moodScore);
@@ -150,7 +177,7 @@ const Dashboard = () => {
       } catch (err) {
         console.error('Failed to initiate Twilio call:', err);
         // Fallback to showing the break modal if the call fails
-        startCalmingAudio(CALM_AUDIO_URL);
+        startCalmingAudio(themeSoundUrl);
         setShowBreakModal(true);
       }
     } else {
@@ -158,7 +185,7 @@ const Dashboard = () => {
       // This is the standard behavior used previously.
       console.log('onMeetingEnd fired for event:', event, 'moodScore:', moodScore);
 
-      startCalmingAudio(CALM_AUDIO_URL);
+      startCalmingAudio(themeSoundUrl);
       setShowBreakModal(true);
     }
   };
@@ -207,51 +234,13 @@ const Dashboard = () => {
       
       // Wait a moment before showing results and resetting
       setTimeout(() => {
-        // Show results
+        // Show results modal (MeetingEndedResults component)
         setMeetingEndedResults(response.data);
         setMeetingEndedProcessing(false);
         setProcessingStage('');
         
-        // Show success toast
-        const summary = response.data.summary || {};
-        const outputs = response.data.outputs || {};
-        
-        // Count successful agents
-        const successfulAgents = Object.values(outputs).filter(o => o && o.success).length;
-        const totalAgents = Object.keys(outputs).length;
-        
-        let message = `✅ Automation Complete! (${successfulAgents}/${totalAgents} agents succeeded)\n\n`;
-        
-        // Show database entries created
-        if (summary.database_entries_created > 0) {
-          message += `✅ ${summary.database_entries_created} stories auto-created in Backlog Database\n`;
-        }
-        
-        // Show report page link
-        if (summary.report_page_url) {
-          message += `📄 Full report page: ${summary.report_page_title || 'Meeting Ended Report'}\n`;
-          message += `   ${summary.report_page_url}\n\n`;
-        }
-        
-        // Show pending stories
-        if (summary.stories_pending_review > 0) {
-          message += `⚠️ ${summary.stories_pending_review} stories need review (see report page)\n`;
-        }
-        
-        message += `\n• ${summary.action_items_total || 0} action items extracted\n`;
-        message += `• ${summary.duplicates_found || 0} duplicates found\n`;
-        message += `• Processing time: ${response.data.processing_time_seconds || 0}s`;
-        
-        // Show errors if any agents failed
-        const failedAgents = Object.entries(outputs)
-          .filter(([_, o]) => o && !o.success)
-          .map(([name, _]) => name);
-        
-        if (failedAgents.length > 0) {
-          message += `\n\n⚠️ Some agents failed: ${failedAgents.join(', ')}`;
-        }
-        
-        alert(message);
+        // Play accept sound when automation completes successfully
+        playAccept();
         
         // Reload checklist and schedule
         setTimeout(() => {
@@ -263,6 +252,9 @@ const Dashboard = () => {
       console.error('Error triggering meeting ended:', err);
       setMeetingEndedProcessing(false);
       setProcessingStage('');
+      
+      // Play error sound
+      playError();
       
       const errorMessage = err.response?.data?.detail || err.message || 'Failed to process meeting';
       alert(`❌ Error: ${errorMessage}\n\nCheck the backend console for details.`);

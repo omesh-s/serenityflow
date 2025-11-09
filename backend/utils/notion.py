@@ -114,6 +114,26 @@ def get_notion_pages(access_token: str, page_size: int = 100, max_pages: int = N
                         title = prop_data["title"][0].get("plain_text", "Untitled")
                         break
             
+            # Extract priority from properties
+            priority = "medium"  # Default priority
+            if "properties" in page:
+                for prop_name, prop_data in page["properties"].items():
+                    # Check for priority property (select type)
+                    if prop_data.get("type") == "select" and prop_data.get("select"):
+                        priority_value = prop_data["select"].get("name", "").lower()
+                        # Check if this property is likely a priority field
+                        # Common names: "Priority", "priority", "Importance", "Urgency"
+                        prop_lower = prop_name.lower()
+                        if "priority" in prop_lower or "importance" in prop_lower or "urgency" in prop_lower:
+                            if priority_value in ["high", "medium", "low"]:
+                                priority = priority_value
+                            elif priority_value in ["critical", "urgent", "p0", "p1"]:
+                                priority = "high"
+                            elif priority_value in ["normal", "p2", "p3"]:
+                                priority = "medium"
+                            elif priority_value in ["low", "nice-to-have", "p4", "p5"]:
+                                priority = "low"
+            
             # Return full page data for wellness analysis, but also include formatted version
             formatted_page = {
                 "id": page.get("id"),
@@ -122,16 +142,43 @@ def get_notion_pages(access_token: str, page_size: int = 100, max_pages: int = N
                 "created_time": page.get("created_time", ""),
                 "last_edited_time": page.get("last_edited_time", ""),
                 "archived": page.get("archived", False),
+                "priority": priority,  # Add priority field
                 # Include full page data for wellness analysis
                 "properties": page.get("properties", {}),
                 "raw_data": page  # Keep full raw data for advanced analysis
             }
             formatted_pages.append(formatted_page)
         
+        # Sort pages by priority (high -> medium -> low), then by last_edited_time (descending)
+        # High priority (1) comes first, then medium (2), then low (3)
+        # Within same priority, newest pages come first
+        from collections import defaultdict
+        priority_order = {"high": 1, "medium": 2, "low": 3}
+        
+        # Group pages by priority
+        priority_groups = defaultdict(list)
+        for page in formatted_pages:
+            priority = page.get("priority", "medium")
+            priority_groups[priority].append(page)
+        
+        # Sort each priority group by last_edited_time descending (newest first)
+        # Then combine in priority order: high, medium, low
+        sorted_pages = []
+        for priority in ["high", "medium", "low"]:
+            if priority in priority_groups:
+                group = priority_groups[priority]
+                # Sort by last_edited_time descending (newest first)
+                # ISO format strings sort correctly when we reverse=True
+                group.sort(key=lambda p: p.get("last_edited_time", "") or "0000-01-01T00:00:00Z", reverse=True)
+                sorted_pages.extend(group)
+        
+        formatted_pages = sorted_pages
+        
         print(f"✅ Total: Fetched {len(formatted_pages)} pages from Notion")
         print(f"   - Raw pages from API: {len(all_pages)}")
         print(f"   - Archived pages filtered: {archived_count}")
         print(f"   - Final page count: {len(formatted_pages)}")
+        print(f"   - Pages sorted by priority: {len([p for p in formatted_pages if p.get('priority') == 'high'])} high, {len([p for p in formatted_pages if p.get('priority') == 'medium'])} medium, {len([p for p in formatted_pages if p.get('priority') == 'low'])} low")
         
         if len(all_pages) < 10:
             print(f"⚠️  WARNING: Only {len(all_pages)} pages found. This might indicate:")

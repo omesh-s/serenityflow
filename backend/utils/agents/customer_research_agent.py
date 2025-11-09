@@ -16,7 +16,7 @@ class CustomerResearchAgent(BaseAgent):
         """Initialize the customer research agent."""
         super().__init__(db_session, user_id)
         initialize_gemini()
-        self.model = genai.GenerativeModel('gemini-2.5-flash')
+        self.model = genai.GenerativeModel('gemini-2.5-flash-lite')
     
     def run(self, notion_pages: Optional[List[Dict]] = None, events: Optional[List[Dict]] = None, **kwargs) -> Dict[str, Any]:
         """Analyze customer feedback, competitors, and market trends.

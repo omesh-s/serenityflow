@@ -4,13 +4,16 @@ import { motion } from 'framer-motion';
 import { IoHomeOutline, IoSettingsOutline, IoLogOutOutline } from 'react-icons/io5';
 import { useAuth } from '../hooks/useAuth';
 import { useTheme } from '../hooks/useTheme.jsx';
+import { useSoundControl } from '../hooks/useSoundControl';
 import { hexToRgba } from '../utils/hexToRgb';
 import logo from '../assets/SerenityLogo.png';
+import { IoVolumeHigh, IoVolumeMute } from 'react-icons/io5';
 
 const Layout = ({ children }) => {
   const location = useLocation();
   const { user, logout, checkAuthStatus } = useAuth();
   const { themeColors } = useTheme();
+  const { isMuted, toggleMute } = useSoundControl();
   
   // Note: User info will be fetched automatically by useAuth hook
   // If user name is "User", it means user info is not available yet
@@ -96,6 +99,27 @@ const Layout = ({ children }) => {
             <NavLink to="/settings" icon={IoSettingsOutline} active={location.pathname === '/settings'}>
               Settings
             </NavLink>
+            
+            {/* Mute/Unmute Button */}
+            <button
+              onClick={toggleMute}
+              className="p-2 rounded-lg transition-colors"
+              style={{
+                color: themeColors ? themeColors.textLight : '#0284c7',
+                transition: 'all 0.3s ease-in-out'
+              }}
+              onMouseEnter={(e) => {
+                if (themeColors) {
+                  e.currentTarget.style.backgroundColor = hexToRgba(themeColors.primaryLight, 0.1);
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'transparent';
+              }}
+              title={isMuted ? 'Unmute sounds' : 'Mute sounds'}
+            >
+              {isMuted ? <IoVolumeMute size={20} /> : <IoVolumeHigh size={20} />}
+            </button>
             
             {user && (
               <div 

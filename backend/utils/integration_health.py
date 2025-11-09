@@ -154,8 +154,8 @@ def check_gemini_health() -> Dict[str, Any]:
         initialize_gemini()
         # Simple test - try to create a model instance
         import google.generativeai as genai
-        # Use gemini-2.5-flash for good balance of speed and quality
-        model = genai.GenerativeModel('gemini-2.5-flash')
+        # Use gemini-2.5-flash-lite for good balance of speed and quality
+        model = genai.GenerativeModel('gemini-2.5-flash-lite')
         return {
             "available": True,
             "status": "healthy",

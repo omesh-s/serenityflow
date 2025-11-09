@@ -16,7 +16,7 @@ class NoiseClearingAgent(BaseAgent):
         """Initialize the backlog grooming agent."""
         super().__init__(db_session, user_id)
         initialize_gemini()
-        self.model = genai.GenerativeModel('gemini-2.5-flash')
+        self.model = genai.GenerativeModel('gemini-2.5-flash-lite')
     
     def run(self, **kwargs) -> Dict[str, Any]:
         """Run backlog grooming: cluster items, generate canonical stories, and flag duplicates.
@@ -28,17 +28,19 @@ class NoiseClearingAgent(BaseAgent):
         
         self.log_action("Starting backlog grooming")
         
-        # Get all active stories (exclude archived and rejected)
+        # Get all active stories from CURRENT RUN ONLY (last 5 minutes)
+        # This prevents processing stories from previous automation runs
+        from datetime import datetime, timedelta
+        recent_cutoff = datetime.utcnow() - timedelta(minutes=5)
+        
+        # Only get stories from current automation run to avoid accumulation
         stories = self.db.query(Story).filter(
             Story.user_id == self.user_id,
-            Story.status.in_(["pending", "approved"])
+            Story.status.in_(["pending", "approved"]),
+            Story.created_at >= recent_cutoff  # Only current run
         ).order_by(Story.created_at.desc()).all()
         
-        # Limit to recent stories to avoid processing too many duplicates
-        # Only check duplicates among stories created in the last 90 days
-        from datetime import datetime, timedelta
-        cutoff_date = datetime.utcnow() - timedelta(days=90)
-        recent_stories = [s for s in stories if s.created_at and s.created_at >= cutoff_date]
+        recent_stories = stories  # All stories are from current run
         
         # If we have too many stories, only process recent ones for clustering
         # But still use all stories for duplicate detection
@@ -481,8 +483,8 @@ Return ONLY JSON, no markdown formatting. Keep responses concise. Limit to top 1
         if len(stories) > 5:
             try:
                 initialize_gemini()
-                # Use gemini-2.5-flash for good balance of speed and quality
-                model = genai.GenerativeModel('gemini-2.5-flash')
+                # Use gemini-2.5-flash-lite for good balance of speed and quality
+                model = genai.GenerativeModel('gemini-2.5-flash-lite')
                 
                 # Prepare story list for GenAI
                 stories_data = []

@@ -22,6 +22,72 @@ from utils.agents import (
 router = APIRouter()
 
 
+def clear_automation_states(db: Session, user_id: str = "default"):
+    """Clear automation states before starting a new automation run.
+    
+    This ensures we don't have duplicate processing or stale state.
+    States cleared:
+    - Stories from previous automation runs (archived to prevent accumulation)
+    - Processing flags (handled by force_reprocess=True in agents)
+    - Cache mechanisms are invalidated automatically via fingerprints when data changes
+    
+    Args:
+        db: Database session
+        user_id: User identifier
+    """
+    from database import Story, ChecklistItem
+    from datetime import datetime, timedelta
+    
+    print("[Meeting Ended Pipeline] Clearing automation states...")
+    
+    # Archive or delete stories from previous automation runs to prevent accumulation
+    # This ensures each automation run starts fresh and doesn't accumulate stories across runs
+    try:
+        # Archive stories that are pending or approved (from previous runs)
+        # We'll archive them so they're not considered in duplicate detection
+        stories_to_archive = db.query(Story).filter(
+            Story.user_id == user_id,
+            Story.status.in_(["pending", "approved"])
+        ).all()
+        
+        if stories_to_archive:
+            archived_count = 0
+            for story in stories_to_archive:
+                # Archive the story so it's not considered in new runs
+                story.status = "archived"
+                archived_count += 1
+            
+            db.commit()
+            print(f"[Meeting Ended Pipeline] Archived {archived_count} stories from previous runs")
+        else:
+            print("[Meeting Ended Pipeline] No stories to archive")
+            
+    except Exception as e:
+        print(f"[Meeting Ended Pipeline] Error archiving stories: {str(e)}")
+        db.rollback()
+        # Continue even if archiving fails
+    
+    # Clear any pending checklist items from previous automation runs
+    # Keep resolved items for history, but clear pending ones to avoid confusion
+    try:
+        old_pending_items = db.query(ChecklistItem).filter(
+            ChecklistItem.user_id == user_id,
+            ChecklistItem.status == "pending",
+            ChecklistItem.type.in_(["story_approval", "backlog_cleanup", "release_report"])
+        ).all()
+        
+        if old_pending_items:
+            for item in old_pending_items:
+                db.delete(item)
+            db.commit()
+            print(f"[Meeting Ended Pipeline] Cleared {len(old_pending_items)} old pending checklist items")
+    except Exception as e:
+        print(f"[Meeting Ended Pipeline] Error clearing checklist items: {str(e)}")
+        db.rollback()
+    
+    print("[Meeting Ended Pipeline] State clearing complete - ready for fresh automation run")
+
+
 @router.post("/trigger-meeting-ended")
 async def trigger_meeting_ended(
     user_id: str = "default",
@@ -30,10 +96,11 @@ async def trigger_meeting_ended(
     """Trigger the complete PM workflow pipeline after a meeting ends.
     
     This endpoint:
-    1. Fetches all recent data (Notion pages, meeting notes, backlog items)
-    2. Runs all 6 agents sequentially
-    3. Collects outputs and creates checklist items
-    4. Returns comprehensive summary to frontend
+    1. Clears automation states to avoid duplicates
+    2. Fetches all recent data (Notion pages, meeting notes, backlog items)
+    3. Runs all 6 agents sequentially
+    4. Collects outputs and creates checklist items
+    5. Returns comprehensive summary to frontend
     
     Note: In production, user_id should come from authentication token.
     For now, using "default" as the user_id.
@@ -44,6 +111,9 @@ async def trigger_meeting_ended(
     start_time = time.time()
     
     try:
+        # Clear automation states before starting
+        clear_automation_states(db, user_id)
+        
         # Get tokens
         notion_token = get_token(db, "notion")
         google_token = get_token(db, "google")
@@ -175,16 +245,19 @@ async def trigger_meeting_ended(
         print("[Meeting Ended Pipeline] Running Sprint Planning Agent...")
         try:
             # Get stories from story extraction output or database
+            # Only use stories from the CURRENT run (from story extraction output)
             stories_for_sprint = None
             if outputs.get("story_extraction", {}).get("success"):
                 story_data = outputs["story_extraction"]
-                # Get Story objects from database
+                # Get Story objects from database - ONLY from current run
                 from database import Story
                 story_ids = story_data.get("story_ids", [])
                 if story_ids:
+                    # Only query stories from the current run (by ID list from story extraction)
                     stories_from_db = db.query(Story).filter(
                         Story.id.in_(story_ids),
-                        Story.user_id == user_id
+                        Story.user_id == user_id,
+                        Story.status.in_(["pending", "approved"])  # Only active stories
                     ).all()
                     # Convert to dict format
                     priority_order = {"high": 1, "medium": 2, "low": 3}
@@ -208,6 +281,37 @@ async def trigger_meeting_ended(
                         }
                         for s in stories_sorted
                     ]
+                else:
+                    # Fallback: get stories from current run only (last 5 minutes)
+                    from datetime import timedelta
+                    recent_cutoff = datetime.utcnow() - timedelta(minutes=5)
+                    stories_from_db = db.query(Story).filter(
+                        Story.user_id == user_id,
+                        Story.status.in_(["pending", "approved"]),
+                        Story.created_at >= recent_cutoff  # Only current run
+                    ).all()
+                    if stories_from_db:
+                        priority_order = {"high": 1, "medium": 2, "low": 3}
+                        stories_sorted = sorted(
+                            stories_from_db,
+                            key=lambda s: (
+                                priority_order.get(s.priority, 2),
+                                -(s.story_points if s.story_points else 0)
+                            )
+                        )
+                        stories_for_sprint = [
+                            {
+                                "id": s.id,
+                                "title": s.title,
+                                "description": s.description,
+                                "priority": s.priority,
+                                "points": s.story_points or (8 if s.priority == "high" else (5 if s.priority == "medium" else 3)),
+                                "story_points": s.story_points,
+                                "owner": s.owner,
+                                "tags": json.loads(s.tags) if s.tags else []
+                            }
+                            for s in stories_sorted
+                        ]
             
             sprint_planning = sprint_planning_agent.run(stories=stories_for_sprint)
             outputs["sprint_planning"] = sprint_planning
@@ -229,38 +333,29 @@ async def trigger_meeting_ended(
         try:
             from utils.notion_reports import create_comprehensive_report_page, create_backlog_database_entries
             
-            # Get stories from story extraction
+            # Get stories from story extraction - ONLY from current run
             stories = []
             if outputs.get("story_extraction", {}).get("success"):
                 story_data = outputs["story_extraction"]
-                # Get Story objects from database
+                # Get Story objects from database - ONLY from current run
                 from database import Story
                 story_ids = story_data.get("story_ids", [])
                 if story_ids:
+                    # Only get stories from current run (by ID list)
                     stories = db.query(Story).filter(
                         Story.id.in_(story_ids),
-                        Story.user_id == user_id
+                        Story.user_id == user_id,
+                        Story.status.in_(["pending", "approved"])  # Only active stories from current run
                     ).all()
                 else:
-                    # Fallback: get all stories extracted in this run
-                    # We need to get them from the result
-                    extracted_stories = story_data.get("stories", [])
-                    if extracted_stories:
-                        # Extract story IDs and query from database
-                        story_ids_from_result = [s.get("id") if isinstance(s, dict) else s.id for s in extracted_stories]
-                        if story_ids_from_result:
-                            stories = db.query(Story).filter(
-                                Story.id.in_(story_ids_from_result),
-                                Story.user_id == user_id
-                            ).all()
-                    else:
-                        # Last resort: get all stories extracted today
-                        from datetime import timedelta
-                        today = datetime.utcnow()
-                        stories = db.query(Story).filter(
-                            Story.user_id == user_id,
-                            Story.extracted_at >= today - timedelta(hours=1)  # Stories extracted in last hour
-                        ).order_by(Story.extracted_at.desc()).limit(100).all()
+                    # Fallback: get stories from current run only (last 5 minutes)
+                    from datetime import timedelta
+                    recent_cutoff = datetime.utcnow() - timedelta(minutes=5)
+                    stories = db.query(Story).filter(
+                        Story.user_id == user_id,
+                        Story.status.in_(["pending", "approved"]),
+                        Story.created_at >= recent_cutoff  # Only current run
+                    ).order_by(Story.created_at.desc()).limit(100).all()
             
             # Determine meeting name and date from most recent meeting note
             meeting_name = "Meeting"

@@ -7,6 +7,7 @@ import AuthGate from './components/AuthGate';
 import { useAuth } from './hooks/useAuth';
 import { ThemeProvider } from './hooks/useTheme.jsx';
 import { TimezoneProvider } from './hooks/useTimezone.jsx';
+import { SoundControlProvider } from './hooks/useSoundControl';
 
 function App() {
   const { isAuthenticated, loading } = useAuth();
@@ -23,32 +24,34 @@ function App() {
   }
 
   return (
-    <ThemeProvider>
-      <TimezoneProvider>
-        <Router>
-          <Routes>
-            <Route path="/auth" element={<AuthGate />} />
-            <Route path="/auth/callback" element={<AuthGate />} />
-            <Route
-              path="/*"
-              element={
-                isAuthenticated ? (
-                  <Layout>
-                    <Routes>
-                      <Route path="/" element={<Dashboard />} />
-                      <Route path="/settings" element={<Settings />} />
-                      <Route path="*" element={<Navigate to="/" replace />} />
-                    </Routes>
-                  </Layout>
-                ) : (
-                  <Navigate to="/auth" replace />
-                )
-              }
-            />
-          </Routes>
-        </Router>
-      </TimezoneProvider>
-    </ThemeProvider>
+    <SoundControlProvider>
+      <ThemeProvider>
+        <TimezoneProvider>
+          <Router>
+            <Routes>
+              <Route path="/auth" element={<AuthGate />} />
+              <Route path="/auth/callback" element={<AuthGate />} />
+              <Route
+                path="/*"
+                element={
+                  isAuthenticated ? (
+                    <Layout>
+                      <Routes>
+                        <Route path="/" element={<Dashboard />} />
+                        <Route path="/settings" element={<Settings />} />
+                        <Route path="*" element={<Navigate to="/" replace />} />
+                      </Routes>
+                    </Layout>
+                  ) : (
+                    <Navigate to="/auth" replace />
+                  )
+                }
+              />
+            </Routes>
+          </Router>
+        </TimezoneProvider>
+      </ThemeProvider>
+    </SoundControlProvider>
   );
 }
 

@@ -1,149 +1,174 @@
-"""Audio routes for generating sound previews using ElevenLabs."""
+"""Audio routes for serving sound files from public folder."""
 from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import StreamingResponse, Response
-from config import settings
-from io import BytesIO
-import base64
+from fastapi.responses import FileResponse, Response
+from pathlib import Path
+import os
 
 router = APIRouter()
 
-# Try to import elevenlabs, but make it optional
-try:
-    import elevenlabs
-    ELEVENLABS_AVAILABLE = True
-except ImportError:
-    ELEVENLABS_AVAILABLE = False
-    print("Warning: elevenlabs not installed. Audio previews will not work.")
+# Path to public folder (parent directory's public folder)
+# backend/routes/audio.py -> backend -> root -> public
+BASE_DIR = Path(__file__).parent.parent.parent
+PUBLIC_DIR = BASE_DIR / "public"
+
+# Ensure public directory exists
+if not PUBLIC_DIR.exists():
+    # Try alternative path (if running from different location)
+    PUBLIC_DIR = Path(__file__).parent.parent.parent.parent / "public"
+
+# Theme to sound file mapping
+THEME_SOUND_MAP = {
+    'forest': 'forest.mp3',
+    'rain': 'gentlerain.mp3',
+    'ocean': 'oceanwaves.mp3',
+    'wind': 'windchimes.mp3',
+}
 
 
 @router.get("/preview/{theme_id}")
 async def get_sound_preview(theme_id: str):
-    """Generate a short sound preview for a theme using ElevenLabs."""
+    """Get sound preview file for a theme from public folder."""
     try:
-        if not settings.elevenlabs_api_key:
+        # Get sound file name for theme
+        sound_file = THEME_SOUND_MAP.get(theme_id, 'oceanwaves.mp3')
+        sound_path = PUBLIC_DIR / sound_file
+        
+        if not sound_path.exists():
             raise HTTPException(
-                status_code=500,
-                detail="ElevenLabs API key not configured"
+                status_code=404,
+                detail=f"Sound file not found: {sound_file}"
             )
         
-        # Theme-specific preview texts
-        theme_previews = {
-            'ocean': 'gentle ocean waves crashing softly on the shore',
-            'forest': 'peaceful forest with birds chirping and leaves rustling',
-            'rain': 'gentle rain falling softly on leaves',
-            'wind': 'delicate wind chimes tinkling in a gentle breeze',
-        }
+        # Determine media type based on file extension
+        media_type = "audio/mpeg" if sound_file.endswith('.mp3') else "audio/wav"
         
-        preview_text = theme_previews.get(theme_id, theme_previews['ocean'])
-        
-        # Configure ElevenLabs
-        elevenlabs.set_api_key(settings.elevenlabs_api_key)
-        
-        # Generate audio using text-to-speech with ambient sound description
-        # Note: ElevenLabs TTS may not generate ambient sounds directly,
-        # but we can create a brief descriptive text that sounds calming
-        # For true ambient sounds, you'd need ElevenLabs' sound generation API if available
-        
-        # Try to generate a short ambient-like audio
-        # Using a calm voice with the ambient description
-        try:
-            audio = elevenlabs.generate(
-                text=f"*{preview_text}*",  # Emphasis on the ambient description
-                voice="Rachel",  # Use a calm, clear voice
-                model="eleven_multilingual_v2"
-            )
-            
-            # Return audio as streaming response
-            return StreamingResponse(
-                BytesIO(audio),
-                media_type="audio/mpeg",
-                headers={
-                    "Content-Disposition": f"inline; filename={theme_id}_preview.mp3"
-                }
-            )
-        except Exception as e:
-            # Fallback: Return a simple chime-like text
-            # For better results, you might want to use pre-recorded samples
-            # or a dedicated sound generation service
-            print(f"Error generating audio with ElevenLabs: {str(e)}")
-            
-            # Return error or use fallback
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to generate audio preview: {str(e)}"
-            )
-            
+        return FileResponse(
+            sound_path,
+            media_type=media_type,
+            headers={
+                "Content-Disposition": f"inline; filename={sound_file}",
+                "Cache-Control": "public, max-age=3600"
+            }
+        )
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error in audio preview generation: {str(e)}")
+        print(f"Error serving sound preview: {str(e)}")
         raise HTTPException(
             status_code=500,
-            detail=f"Error generating sound preview: {str(e)}"
+            detail=f"Error serving sound preview: {str(e)}"
         )
 
 
 @router.get("/chime/{theme_id}")
 async def get_theme_chime(theme_id: str):
-    """Generate a short chime sound for theme selection feedback."""
+    """Get a short chime sound for theme selection feedback."""
     try:
-        if not ELEVENLABS_AVAILABLE or not settings.elevenlabs_api_key:
-            # Return a minimal silent audio response if ElevenLabs is not available
-            # In production, you might want to use pre-recorded audio files
+        # Use the same sound file as preview, but play a short clip
+        # For now, just return the full file - frontend can handle clipping if needed
+        sound_file = THEME_SOUND_MAP.get(theme_id, 'oceanwaves.mp3')
+        sound_path = PUBLIC_DIR / sound_file
+        
+        if not sound_path.exists():
             return Response(
                 content=b'',
                 media_type="audio/mpeg",
                 headers={"Cache-Control": "no-cache"}
             )
         
-        # Try to use ElevenLabs sound effects API if available, otherwise use TTS
-        # For theme chimes, we want very brief, pleasant sounds
-        try:
-            # Check if sound effects API is available (newer ElevenLabs feature)
-            # For now, use TTS with very short, chime-like text
-            chime_texts = {
-                'ocean': 'ah',  # Very brief sound for chime effect
-                'forest': 'mm',
-                'rain': 'sh',
-                'wind': 'oh',
+        media_type = "audio/mpeg" if sound_file.endswith('.mp3') else "audio/wav"
+        
+        return FileResponse(
+            sound_path,
+            media_type=media_type,
+            headers={
+                "Content-Disposition": f"inline; filename={theme_id}_chime.mp3",
+                "Cache-Control": "public, max-age=3600"
             }
-            
-            chime_text = chime_texts.get(theme_id, 'ah')
-            
-            elevenlabs.set_api_key(settings.elevenlabs_api_key)
-            
-            # Generate a very short audio clip
-            # Using minimal text to create a quick chime-like sound
-            audio = elevenlabs.generate(
-                text=chime_text,
-                voice="Rachel",  # Calm, soft voice
-                model="eleven_multilingual_v2"
-            )
-            
-            return StreamingResponse(
-                BytesIO(audio),
-                media_type="audio/mpeg",
-                headers={
-                    "Content-Disposition": f"inline; filename={theme_id}_chime.mp3",
-                    "Cache-Control": "public, max-age=3600"
-                }
-            )
-        except Exception as e:
-            print(f"Error generating chime with ElevenLabs: {str(e)}")
-            # Return empty response if generation fails
-            # In production, fallback to pre-recorded chime sounds
-            return Response(
-                content=b'',
-                media_type="audio/mpeg",
-                headers={"Cache-Control": "no-cache"}
-            )
-            
+        )
     except Exception as e:
-        print(f"Error in chime generation: {str(e)}")
-        # Return empty response on error (frontend will handle gracefully)
+        print(f"Error serving chime: {str(e)}")
         return Response(
             content=b'',
             media_type="audio/mpeg",
             headers={"Cache-Control": "no-cache"}
+        )
+
+
+@router.get("/theme/{theme_id}")
+async def get_theme_sound(theme_id: str):
+    """Get the main theme sound file for background playback."""
+    try:
+        sound_file = THEME_SOUND_MAP.get(theme_id, 'oceanwaves.mp3')
+        sound_path = PUBLIC_DIR / sound_file
+        
+        if not sound_path.exists():
+            raise HTTPException(
+                status_code=404,
+                detail=f"Sound file not found: {sound_file}"
+            )
+        
+        media_type = "audio/mpeg" if sound_file.endswith('.mp3') else "audio/wav"
+        
+        return FileResponse(
+            sound_path,
+            media_type=media_type,
+            headers={
+                "Content-Disposition": f"inline; filename={sound_file}",
+                "Cache-Control": "public, max-age=86400"  # Cache for 24 hours
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error serving theme sound: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error serving theme sound: {str(e)}"
+        )
+
+
+@router.get("/event/{event_type}")
+async def get_event_sound(event_type: str):
+    """Get event sound files (startup, error, accept)."""
+    try:
+        event_sound_map = {
+            'startup': 'startup_sound.wav',
+            'error': 'error_sound.wav',
+            'accept': 'accept_sound.wav',
+        }
+        
+        sound_file = event_sound_map.get(event_type)
+        if not sound_file:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Event sound not found: {event_type}"
+            )
+        
+        sound_path = PUBLIC_DIR / sound_file
+        
+        if not sound_path.exists():
+            raise HTTPException(
+                status_code=404,
+                detail=f"Sound file not found: {sound_file}"
+            )
+        
+        media_type = "audio/wav" if sound_file.endswith('.wav') else "audio/mpeg"
+        
+        return FileResponse(
+            sound_path,
+            media_type=media_type,
+            headers={
+                "Content-Disposition": f"inline; filename={sound_file}",
+                "Cache-Control": "public, max-age=86400"
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error serving event sound: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error serving event sound: {str(e)}"
         )
 

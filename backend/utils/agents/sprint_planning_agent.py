@@ -15,7 +15,7 @@ class SprintPlanningAgent(BaseAgent):
         """Initialize the sprint planning agent."""
         super().__init__(db_session, user_id)
         initialize_gemini()
-        self.model = genai.GenerativeModel('gemini-2.5-flash')
+        self.model = genai.GenerativeModel('gemini-2.5-flash-lite')
     
     def run(self, stories: Optional[List[Dict]] = None, velocity: int = 13) -> Dict[str, Any]:
         """Generate sprint plan based on backlog items.
@@ -32,10 +32,14 @@ class SprintPlanningAgent(BaseAgent):
         self.log_action("Starting sprint planning")
         
         # Get stories from database if not provided
+        # Only get stories from CURRENT RUN (last 5 minutes) to avoid accumulation
         if stories is None:
+            from datetime import timedelta
+            recent_cutoff = datetime.utcnow() - timedelta(minutes=5)
             stories = self.db.query(Story).filter(
                 Story.user_id == self.user_id,
-                Story.status.in_(["pending", "approved"])
+                Story.status.in_(["pending", "approved"]),
+                Story.created_at >= recent_cutoff  # Only current run
             ).all()
             
             # Sort by Priority (High → Medium → Low) then by story points (descending)

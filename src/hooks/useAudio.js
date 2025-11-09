@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useSoundControl } from './useSoundControl';
 
 /**
  * Audio playback hook for ElevenLabs meditation audio
@@ -11,6 +12,7 @@ export const useAudio = () => {
   const [volume, setVolume] = useState(0.7);
   const [loading, setLoading] = useState(false);
   const audioRef = useRef(null);
+  const { isMuted } = useSoundControl();
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -46,6 +48,11 @@ export const useAudio = () => {
   }, []);
 
   const play = useCallback(async () => {
+    // Don't play audio if muted
+    if (isMuted) {
+      return;
+    }
+
     try {
       if (audioRef.current) {
         await audioRef.current.play();
@@ -54,7 +61,7 @@ export const useAudio = () => {
     } catch (error) {
       console.error('Failed to play audio:', error);
     }
-  }, []);
+  }, [isMuted]);
 
   const pause = useCallback(() => {
     if (audioRef.current) {
