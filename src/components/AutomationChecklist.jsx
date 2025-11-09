@@ -164,14 +164,9 @@ const AutomationChecklist = () => {
   };
 
   const handleClearAll = async () => {
-    if (!confirm('Are you sure you want to clear all pending checklist items?')) {
-      return;
-    }
-    
     try {
       const response = await axios.post(`${API_BASE_URL}/api/checklist/clear-all`);
       if (response.data.success) {
-        alert(`✅ Cleared ${response.data.cleared_count} checklist items`);
         loadChecklist();
         loadSummary();
       }

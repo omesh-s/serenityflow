@@ -116,7 +116,7 @@ const MeetingEndedResults = ({ results, onClose }) => {
         {/* Result Cards */}
         <div className="space-y-4">
           {/* 1. Customer & Market Research */}
-          {outputs.customer_research && outputs.customer_research.success && (
+          {outputs.customer_research && outputs.customer_research.success !== false && (
             <ResultCard
               title="Customer & Market Research"
               icon={<IoInformationCircle />}
@@ -186,7 +186,7 @@ const MeetingEndedResults = ({ results, onClose }) => {
           )}
 
           {/* 6. Sprint Planning */}
-          {outputs.sprint_planning && outputs.sprint_planning.success && (
+          {outputs.sprint_planning && outputs.sprint_planning.success !== false && (
             <ResultCard
               title="Sprint Planning"
               icon={<IoCheckmarkCircle />}

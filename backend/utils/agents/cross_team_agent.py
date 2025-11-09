@@ -64,15 +64,18 @@ class CrossTeamAgent(BaseAgent):
         # Extract text from pages
         all_text = self._extract_team_text(notion_pages, notion_token.access_token)
         
-        if not all_text or len(all_text) < 100:
+        self.log_action(f"Extracted {len(all_text) if all_text else 0} characters from {len(notion_pages)} pages")
+        
+        # Lower threshold - try to analyze even with minimal data
+        if not all_text or len(all_text) < 20:
             return {
-                "success": False,
-                "error": "Insufficient team data found",
-                "overall_status": "",
+                "success": True,
+                "overall_status": "No team update data found in meeting notes.",
                 "team_highlights": [],
                 "dependencies": [],
                 "risks": [],
-                "recommended_actions": []
+                "recommended_actions": [],
+                "message": "Insufficient team data found. Please add more meeting notes with team updates, dependencies, or blockers."
             }
         
         # Analyze with Gemini
@@ -166,7 +169,31 @@ class CrossTeamAgent(BaseAgent):
         text_parts = []
         content = page_content.get("content", [])
         for block in content:
-            block_text = block.get("text", "")
+            # Try different block text extraction methods (same as customer research)
+            block_text = ""
+            if isinstance(block, dict):
+                # Try common text fields
+                if "text" in block:
+                    block_text = block["text"]
+                elif "rich_text" in block:
+                    # Extract from rich_text array
+                    rich_text = block.get("rich_text", [])
+                    if isinstance(rich_text, list):
+                        block_text = " ".join([item.get("plain_text", "") for item in rich_text if isinstance(item, dict)])
+                elif "paragraph" in block:
+                    rich_text = block["paragraph"].get("rich_text", [])
+                    block_text = " ".join([item.get("plain_text", "") for item in rich_text if isinstance(item, dict)])
+                elif "heading_1" in block or "heading_2" in block or "heading_3" in block:
+                    heading_type = "heading_1" if "heading_1" in block else ("heading_2" if "heading_2" in block else "heading_3")
+                    rich_text = block[heading_type].get("rich_text", [])
+                    block_text = " ".join([item.get("plain_text", "") for item in rich_text if isinstance(item, dict)])
+                elif "bulleted_list_item" in block:
+                    rich_text = block["bulleted_list_item"].get("rich_text", [])
+                    block_text = " ".join([item.get("plain_text", "") for item in rich_text if isinstance(item, dict)])
+                elif "numbered_list_item" in block:
+                    rich_text = block["numbered_list_item"].get("rich_text", [])
+                    block_text = " ".join([item.get("plain_text", "") for item in rich_text if isinstance(item, dict)])
+            
             if block_text:
                 text_parts.append(block_text)
         return "\n".join(text_parts)

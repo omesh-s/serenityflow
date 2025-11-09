@@ -207,11 +207,11 @@ def get_page_content(access_token: str, page_id: str) -> Dict:
                             level = block_type.split("_")[1]
                             text = "#" * int(level) + " " + text
                         
-                        content.append({
-                            "type": block_type,
-                            "text": text
-                        })
-            
+                    content.append({
+                        "type": block_type,
+                        "text": text
+                    })
+        
             # Handle nested children (for toggle blocks, etc.) - handle pagination
             if "has_children" in block and block.get("has_children"):
                 children_blocks = []

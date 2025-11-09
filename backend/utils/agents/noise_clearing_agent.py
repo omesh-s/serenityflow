@@ -40,10 +40,13 @@ class NoiseClearingAgent(BaseAgent):
         cutoff_date = datetime.utcnow() - timedelta(days=90)
         recent_stories = [s for s in stories if s.created_at and s.created_at >= cutoff_date]
         
-        # If we have too many stories, only process recent ones
+        # If we have too many stories, only process recent ones for clustering
+        # But still use all stories for duplicate detection
         if len(stories) > 500:
-            self.log_action(f"Too many stories ({len(stories)}), limiting to recent {len(recent_stories)} stories")
-            stories = recent_stories
+            self.log_action(f"Too many stories ({len(stories)}), limiting clustering to recent {len(recent_stories)} stories (last 90 days)")
+            stories_for_clustering = recent_stories
+        else:
+            stories_for_clustering = stories
         
         if not stories:
             return {
@@ -55,7 +58,7 @@ class NoiseClearingAgent(BaseAgent):
                 "checklist_items": []
             }
         
-        # Convert stories to dict format
+        # Convert stories to dict format for duplicate detection
         stories_data = [
             {
                 "id": s.id,
@@ -66,8 +69,19 @@ class NoiseClearingAgent(BaseAgent):
             for s in stories
         ]
         
+        # Convert stories_for_clustering to dict format for clustering
+        stories_for_clustering_data = [
+            {
+                "id": s.id,
+                "title": s.title,
+                "description": s.description or "",
+                "priority": s.priority or "medium"
+            }
+            for s in stories_for_clustering
+        ]
+        
         # Cluster stories and generate canonical stories
-        clusters = self._cluster_stories(stories_data)
+        clusters = self._cluster_stories(stories_for_clustering_data)
         
         # Find duplicates
         duplicates = self._find_duplicates(stories)
@@ -192,14 +206,28 @@ class NoiseClearingAgent(BaseAgent):
             List of clusters with canonical stories
         """
         if len(stories) < 2:
+            self.log_action(f"Skipping clustering: need at least 2 stories, got {len(stories)}")
             return []
         
+        # Limit to 100 stories max to avoid token limits and ensure response fits
+        if len(stories) > 100:
+            self.log_action(f"Limiting clustering to 100 stories (from {len(stories)} total)")
+            stories = stories[:100]
+        
         try:
+            # Convert stories to JSON, limiting by story count (not character count)
             stories_json = json.dumps(stories, indent=2)
+            
+            # Log how many stories we're clustering
+            self.log_action(f"Clustering {len(stories)} stories")
+            
+            # Limit stories JSON to reduce input size
+            stories_json_limited = json.dumps(stories[:50], indent=2)  # Limit to 50 stories for clustering
+            
             prompt = f"""Analyze the following backlog items and cluster them into groups of similar items. For each cluster, generate a canonical user story.
 
 **Backlog Items:**
-{stories_json[:8000]}
+{stories_json_limited}
 
 **Instructions:**
 1. Group similar tickets/stories together (e.g., all checkout-related, all authentication-related)
@@ -207,26 +235,22 @@ class NoiseClearingAgent(BaseAgent):
    - Cluster name (e.g., "Checkout Performance")
    - Items in the cluster (list of story IDs)
    - User need (what problem does this cluster solve?)
-   - Canonical story with title, description, acceptance criteria, priority, and impact score
+   - Canonical story with title, description, priority, and impact score
 
 3. Priority: High (critical/critical path), Medium (important), Low (nice-to-have)
 4. Impact score: 0-100 (higher = more impact)
+5. Limit to top 10 clusters maximum
 
 **Output Format (JSON only):**
 {{
   "clusters": [
     {{
       "cluster_name": "Checkout Performance",
-      "items": ["F1", "F3", "F8"],
+      "items": ["story-id-1", "story-id-2", "story-id-3"],
       "user_need": "Users need a fast, error-free checkout experience",
       "canonical_story": {{
         "title": "Optimize checkout flow for speed and reliability",
         "description": "Improve checkout performance and fix coupon calculation bugs",
-        "acceptance_criteria": [
-          "Checkout completes in <2s for 90th percentile",
-          "Coupon totals calculate correctly in all scenarios",
-          "Zero payment errors in test suite"
-        ],
         "priority": "High",
         "impact_score": 85
       }}
@@ -234,25 +258,37 @@ class NoiseClearingAgent(BaseAgent):
   ]
 }}
 
-Return ONLY JSON, no markdown formatting."""
+Return ONLY JSON, no markdown formatting. Keep responses concise. Limit to top 10 clusters."""
             
             response = self.model.generate_content(
                 prompt,
                 generation_config=genai.types.GenerationConfig(
                     temperature=0.3,
-                    max_output_tokens=4096,
+                    max_output_tokens=8192,  # Increased to handle larger responses
                 )
             )
             
             # Get response text safely (avoid accessing finish_message)
             response_text = ""
+            finish_reason = None
             try:
-                # First try the standard .text property
+                # First try the standard .text property (this usually works even with MAX_TOKENS)
                 if hasattr(response, 'text'):
-                    response_text = response.text
-                elif hasattr(response, 'candidates') and response.candidates:
-                    # Extract from candidates if .text doesn't work
+                    try:
+                        response_text = response.text
+                        if response_text:
+                            self.log_action(f"Extracted {len(response_text)} characters using response.text")
+                    except Exception as e:
+                        self.log_action(f"Error accessing response.text: {str(e)}")
+                
+                # If that didn't work, try extracting from candidates
+                if not response_text and hasattr(response, 'candidates') and response.candidates:
                     candidate = response.candidates[0]
+                    if hasattr(candidate, 'finish_reason'):
+                        finish_reason = candidate.finish_reason
+                        self.log_action(f"Response finish_reason: {finish_reason}")
+                    
+                    # Extract text from candidate
                     if hasattr(candidate, 'content'):
                         content = candidate.content
                         if hasattr(content, 'parts') and content.parts:
@@ -262,17 +298,33 @@ Return ONLY JSON, no markdown formatting."""
                                 if hasattr(part, 'text'):
                                     text_parts.append(part.text)
                             response_text = "".join(text_parts)
+                            if response_text:
+                                self.log_action(f"Extracted {len(response_text)} characters from candidate.content.parts")
                         elif hasattr(content, 'text'):
                             response_text = content.text
+                            if response_text:
+                                self.log_action(f"Extracted {len(response_text)} characters from candidate.content.text")
                 
-                # Fallback: try to convert to string
+                # Last resort: try to convert to string (but this won't give us the actual text)
                 if not response_text:
-                    response_text = str(response)
+                    self.log_action("Warning: Could not extract text from response. Response structure:")
+                    self.log_action(f"Response type: {type(response)}")
+                    if hasattr(response, 'candidates') and response.candidates:
+                        candidate = response.candidates[0]
+                        self.log_action(f"Candidate type: {type(candidate)}")
+                        self.log_action(f"Candidate attributes: {dir(candidate)}")
+                    return []
+                    
             except Exception as e:
                 self.log_action(f"Error extracting response text: {str(e)}")
                 return []
             
+            # Log warning if response was truncated
+            if finish_reason == "MAX_TOKENS":
+                self.log_action(f"Warning: Response was truncated (MAX_TOKENS). Extracted {len(response_text)} characters. Will try to parse partial JSON.")
+            
             if not response_text:
+                self.log_action("No response text received from clustering model")
                 return []
             
             # Parse response
@@ -287,14 +339,117 @@ Return ONLY JSON, no markdown formatting."""
                 if json_match:
                     response_text = json_match.group(0)
             
-            result = json.loads(response_text)
-            clusters = result.get("clusters", [])
+            # Try to fix truncated JSON by finding balanced braces and brackets
+            if response_text:
+                # Find the start of the JSON object
+                start_pos = response_text.find('{')
+                if start_pos == -1:
+                    self.log_action("No JSON object found in response")
+                    return []
+                
+                # Track braces and brackets to find the end of valid JSON
+                brace_count = 0
+                bracket_count = 0
+                in_string = False
+                escape_next = False
+                last_valid_pos = start_pos
+                
+                for i in range(start_pos, len(response_text)):
+                    char = response_text[i]
+                    
+                    if escape_next:
+                        escape_next = False
+                        continue
+                    
+                    if char == '\\':
+                        escape_next = True
+                        continue
+                    
+                    if char == '"' and not escape_next:
+                        in_string = not in_string
+                        continue
+                    
+                    if not in_string:
+                        if char == '{':
+                            brace_count += 1
+                        elif char == '}':
+                            brace_count -= 1
+                            if brace_count == 0 and bracket_count == 0:
+                                last_valid_pos = i + 1
+                                break
+                        elif char == '[':
+                            bracket_count += 1
+                        elif char == ']':
+                            bracket_count -= 1
+                            if brace_count == 0 and bracket_count == 0:
+                                last_valid_pos = i + 1
+                                break
+                
+                if last_valid_pos > start_pos:
+                    response_text = response_text[start_pos:last_valid_pos]
+                else:
+                    # If we couldn't find balanced braces, try to extract just the clusters array
+                    clusters_match = re.search(r'"clusters"\s*:\s*\[(.*?)\]', response_text, re.DOTALL)
+                    if clusters_match:
+                        # Try to parse just the clusters array
+                        try:
+                            clusters_json = '[' + clusters_match.group(1) + ']'
+                            # Find balanced brackets for the array
+                            bracket_count = 0
+                            last_valid_pos = 0
+                            for i, char in enumerate(clusters_json):
+                                if char == '[':
+                                    bracket_count += 1
+                                elif char == ']':
+                                    bracket_count -= 1
+                                    if bracket_count == 0:
+                                        last_valid_pos = i + 1
+                                        break
+                            if last_valid_pos > 0:
+                                clusters_json = clusters_json[:last_valid_pos]
+                                clusters_list = json.loads(clusters_json)
+                                result = {"clusters": clusters_list}
+                                clusters = result.get("clusters", [])
+                                self.log_action(f"Generated {len(clusters)} clusters from {len(stories)} stories (extracted from partial JSON)")
+                                return clusters
+                        except:
+                            pass
             
-            self.log_action(f"Generated {len(clusters)} clusters from {len(stories)} stories")
-            return clusters
+            # Try to parse the full JSON
+            try:
+                result = json.loads(response_text)
+                clusters = result.get("clusters", [])
+                
+                if not clusters:
+                    self.log_action(f"No clusters found in response. Response keys: {list(result.keys()) if isinstance(result, dict) else 'not a dict'}")
+                    # Log the full response for debugging
+                    self.log_action(f"Full response: {response_text[:1000]}")
+                else:
+                    self.log_action(f"Generated {len(clusters)} clusters from {len(stories)} stories")
+                
+                return clusters
+            except json.JSONDecodeError as e:
+                self.log_action(f"JSON decode error: {str(e)}")
+                self.log_action(f"Response text (first 1000 chars): {response_text[:1000]}")
+                # Try to extract clusters using regex as a last resort
+                clusters_match = re.search(r'"clusters"\s*:\s*\[(.*?)\]', response_text, re.DOTALL)
+                if clusters_match:
+                    self.log_action("Attempting to extract clusters using regex fallback")
+                    # This is a last resort - try to manually parse cluster objects
+                    cluster_objects = re.findall(r'\{\s*"cluster_name"\s*:\s*"[^"]*"\s*,\s*"items"\s*:\s*\[[^\]]*\]', response_text)
+                    if cluster_objects:
+                        self.log_action(f"Found {len(cluster_objects)} cluster objects using regex")
+                        # Return empty list - we can't fully parse without proper JSON
+                        return []
+                return []
             
         except Exception as e:
             self.log_action(f"Error clustering stories: {str(e)}")
+            import traceback
+            self.log_action(f"Traceback: {traceback.format_exc()}")
+            # Log first 1000 chars of response for debugging
+            if 'response_text' in locals() and response_text:
+                self.log_action(f"Response text (first 1000 chars): {response_text[:1000]}")
             return []
     
     def _find_duplicates(self, stories: List) -> List[str]:

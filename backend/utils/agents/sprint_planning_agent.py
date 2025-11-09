@@ -63,11 +63,13 @@ class SprintPlanningAgent(BaseAgent):
             ]
         
         if not stories:
+            self.log_action("No stories found for sprint planning")
             return {
-                "success": False,
-                "error": "No stories found for sprint planning",
+                "success": True,  # Return success with empty data so frontend can display it
                 "sprint_scope": [],
-                "sprint_goal": "",
+                "total_points": 0,
+                "velocity": velocity,
+                "sprint_goal": "No stories available for sprint planning. Please extract stories from meeting notes first.",
                 "rationale": [],
                 "major_risks": [],
                 "stretch_item": None
@@ -271,7 +273,7 @@ Return ONLY JSON, no markdown formatting."""
             data = json.loads(response_text)
             
             # Ensure all required fields exist
-            return {
+            result = {
                 "sprint_scope": data.get("sprint_scope", []),
                 "total_points": data.get("total_points", 0),
                 "velocity": velocity,
@@ -280,6 +282,15 @@ Return ONLY JSON, no markdown formatting."""
                 "major_risks": data.get("major_risks", []),
                 "stretch_item": data.get("stretch_item")
             }
+            
+            # Log results for debugging
+            if not result["sprint_scope"]:
+                self.log_action(f"No sprint scope found. Response keys: {list(data.keys()) if isinstance(data, dict) else 'not a dict'}")
+                self.log_action(f"Full response (first 1000 chars): {response_text[:1000]}")
+            else:
+                self.log_action(f"Generated sprint plan with {len(result['sprint_scope'])} items, {result['total_points']} points")
+            
+            return result
         except json.JSONDecodeError as e:
             self.log_action(f"JSON decode error: {str(e)}")
             self.log_action(f"Response text (first 500 chars): {response_text[:500]}")

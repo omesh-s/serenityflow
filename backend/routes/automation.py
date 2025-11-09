@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import Dict, Any
 import time
+import json
 from datetime import datetime
 from database import get_db
 from utils.token_manager import get_token
@@ -110,7 +111,7 @@ async def trigger_meeting_ended(
         # 1. Customer & Market Research
         print("[Meeting Ended Pipeline] Running Customer Research Agent...")
         try:
-            customer_research = customer_research_agent.run(notion_pages=notion_pages, events=events, access_token=notion_token.access_token)
+            customer_research = customer_research_agent.run(notion_pages=notion_pages, events=events)
             outputs["customer_research"] = customer_research
             if customer_research.get("success"):
                 print(f"[Meeting Ended Pipeline] Customer Research: {len(customer_research.get('customer_themes', []))} themes found")
@@ -173,10 +174,51 @@ async def trigger_meeting_ended(
         # 6. Sprint Planning
         print("[Meeting Ended Pipeline] Running Sprint Planning Agent...")
         try:
-            sprint_planning = sprint_planning_agent.run()
+            # Get stories from story extraction output or database
+            stories_for_sprint = None
+            if outputs.get("story_extraction", {}).get("success"):
+                story_data = outputs["story_extraction"]
+                # Get Story objects from database
+                from database import Story
+                story_ids = story_data.get("story_ids", [])
+                if story_ids:
+                    stories_from_db = db.query(Story).filter(
+                        Story.id.in_(story_ids),
+                        Story.user_id == user_id
+                    ).all()
+                    # Convert to dict format
+                    priority_order = {"high": 1, "medium": 2, "low": 3}
+                    stories_sorted = sorted(
+                        stories_from_db,
+                        key=lambda s: (
+                            priority_order.get(s.priority, 2),
+                            -(s.story_points if s.story_points else 0)
+                        )
+                    )
+                    stories_for_sprint = [
+                        {
+                            "id": s.id,
+                            "title": s.title,
+                            "description": s.description,
+                            "priority": s.priority,
+                            "points": s.story_points or (8 if s.priority == "high" else (5 if s.priority == "medium" else 3)),
+                            "story_points": s.story_points,
+                            "owner": s.owner,
+                            "tags": json.loads(s.tags) if s.tags else []
+                        }
+                        for s in stories_sorted
+                    ]
+            
+            sprint_planning = sprint_planning_agent.run(stories=stories_for_sprint)
             outputs["sprint_planning"] = sprint_planning
+            if sprint_planning.get("success"):
+                print(f"[Meeting Ended Pipeline] Sprint Planning: {len(sprint_planning.get('sprint_scope', []))} items, {sprint_planning.get('total_points', 0)} points")
+            else:
+                print(f"[Meeting Ended Pipeline] Sprint Planning: {sprint_planning.get('error', 'Unknown error')}")
         except Exception as e:
             print(f"Error in sprint planning agent: {str(e)}")
+            import traceback
+            traceback.print_exc()
             outputs["sprint_planning"] = {"success": False, "error": str(e)}
         
         # 7. Create Comprehensive Report Page and Backlog Database Entries

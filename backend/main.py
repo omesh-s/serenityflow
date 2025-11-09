@@ -48,6 +48,11 @@ app.include_router(checklist.router, prefix="/api/checklist", tags=["checklist"]
 from routes import automation
 app.include_router(automation.router, prefix="/api/automation", tags=["automation"])
 
+# Import and include Twilio router (server-side call initiation)
+from routes import twilio
+app.include_router(twilio.router, prefix="/api/twilio", tags=["twilio"])
+
+
 # Initialize automation scheduler
 try:
     from utils.automation_scheduler import get_scheduler

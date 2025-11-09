@@ -246,6 +246,15 @@ def create_comprehensive_report_page(
             # Auto-approved stories
             auto_approved_stories = [s for s in stories if s.status == "approved"]
             if auto_approved_stories:
+                # Sort by Priority (High → Medium → Low) then by Story Points (descending)
+                priority_order = {"high": 1, "medium": 2, "low": 3}
+                auto_approved_stories.sort(
+                    key=lambda s: (
+                        priority_order.get(s.priority, 2),
+                        -(s.story_points if s.story_points else 0)
+                    )
+                )
+                
                 blocks.append({
                     "object": "block",
                     "type": "heading_2",
@@ -267,6 +276,15 @@ def create_comprehensive_report_page(
             # Pending review stories
             pending_stories = [s for s in stories if s.status == "pending"]
             if pending_stories:
+                # Sort by Priority (High → Medium → Low) then by Story Points (descending)
+                priority_order = {"high": 1, "medium": 2, "low": 3}
+                pending_stories.sort(
+                    key=lambda s: (
+                        priority_order.get(s.priority, 2),
+                        -(s.story_points if s.story_points else 0)
+                    )
+                )
+                
                 blocks.append({
                     "object": "block",
                     "type": "heading_2",
