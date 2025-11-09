@@ -162,10 +162,6 @@ const Dashboard = () => {
         setShowBreakModal(true);
       }
     } else {
-      // Default/else behavior: open the Take Break modal so the user can start a break immediately.
-      // This is the standard behavior used previously.
-      console.log('onMeetingEnd fired for event:', event, 'moodScore:', moodScore);
-
       startCalmingAudio(themeSoundUrl);
       setShowBreakModal(true);
     }

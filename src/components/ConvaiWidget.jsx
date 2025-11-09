@@ -1,16 +1,12 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 
 const SCRIPT_ID = 'elevenlabs-convai-script';
+const WIDGET_ID = 'elevenlabs-convai-widget';
 const DEFAULT_AGENT_ID = 'agent_4801k9jw7h6pf56brs516fkc592q';
 
-/**
- * ConvaiWidget
- * Injects the ElevenLabs ConvAI widget script once and renders the
- * custom element where the component is mounted.
- *
- * Usage: <ConvaiWidget agentId="agent_xxx" />
- */
 export default function ConvaiWidget({ agentId = DEFAULT_AGENT_ID }) {
+  const containerRef = useRef(null);
+
   useEffect(() => {
     // Inject script once
     if (!document.getElementById(SCRIPT_ID)) {
@@ -22,13 +18,24 @@ export default function ConvaiWidget({ agentId = DEFAULT_AGENT_ID }) {
       document.body.appendChild(s);
     }
 
-    // No teardown for the script: it's shared across the app
-  }, []);
+    // Ensure widget element only exists once
+    if (containerRef.current && !containerRef.current.querySelector('elevenlabs-convai')) {
+      const widget = document.createElement('elevenlabs-convai');
+      widget.setAttribute('agent-id', agentId);
+      widget.id = WIDGET_ID;
+      containerRef.current.appendChild(widget);
+    }
 
-  // Render the custom element; the external script will hydrate it when ready
-  // The tag name is as provided by ElevenLabs: <elevenlabs-convai>
-  return (
-    // eslint-disable-next-line react/no-unknown-property
-    <elevenlabs-convai agent-id={agentId}></elevenlabs-convai>
-  );
+    return () => {
+      // Cleanup: remove widget element when component unmounts
+      if (containerRef.current) {
+        const widget = containerRef.current.querySelector(`#${WIDGET_ID}`);
+        if (widget) {
+          widget.remove();
+        }
+      }
+    };
+  }, [agentId]);
+
+  return <div ref={containerRef}></div>;
 }
