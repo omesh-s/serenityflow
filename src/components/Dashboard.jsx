@@ -129,11 +129,33 @@ const Dashboard = () => {
     }
   };
 
-  const handleTakeBreak = () => {
-    const CALM_AUDIO_URL = '/assets/calm.wav';
-
-    startCalmingAudio(CALM_AUDIO_URL);
-    setShowBreakModal(true);
+  const handleTakeBreak = async () => {
+    const CALM_AUDIO_URL = '/assets/calm.wav'; // Change this cariable to conditional for 4 phases
+    const moodScore = scheduleData?.wellness_metrics?.wellness_score;
+    const MOOD_THRESHOLD = 70; 
+    console.log('Checking mood score on meeting end:', moodScore);
+    if (typeof moodScore === 'number' && moodScore < MOOD_THRESHOLD) {
+      try {
+        // Only allow calling the explicitly permitted destination. The backend also enforces this.
+        const allowedTo = '+18607302832';
+        const resp = await axios.post(`${API_BASE_URL}/api/twilio/call`, {
+          to: allowedTo,
+        });
+        console.log('Twilio call response:', resp.data);
+      } catch (err) {
+        console.error('Failed to initiate Twilio call:', err);
+        // Fallback to showing the break modal if the call fails
+        startCalmingAudio(CALM_AUDIO_URL);
+        setShowBreakModal(true);
+      }
+    } else {
+      // Default/else behavior: open the Take Break modal so the user can start a break immediately.
+      // This is the standard behavior used previously.
+      console.log('onMeetingEnd fired for event:', event, 'moodScore:', moodScore);
+      
+      startCalmingAudio(CALM_AUDIO_URL);
+      setShowBreakModal(true);
+    }
   };
 
   // Stop audio when component unmounts
@@ -249,35 +271,7 @@ const Dashboard = () => {
             events={scheduleData?.events || []}
             error={error}
             onMeetingEnd={async (event) => {
-              // Meeting ended handler wired from Dashboard
-              // We look up the current wellness/mood score from the schedule data returned by the backend.
-              // Path: scheduleData.wellness_metrics.wellness_score (number, 0-100)
-              const moodScore = scheduleData?.wellness_metrics?.wellness_score;
-
-             
-              const MOOD_THRESHOLD = 70; 
-              console.log('Checking mood score on meeting end:', moodScore);
-              if (typeof moodScore === 'number' && moodScore < MOOD_THRESHOLD) {
-                try {
-                  // Only allow calling the explicitly permitted destination. The backend also enforces this.
-                  const allowedTo = '+18607302832';
-                  const message = `Hi — we noticed your wellness score is ${moodScore}. If you'd like support, reply or press any key to connect.`;
-                  const resp = await axios.post(`${API_BASE_URL}/api/twilio/call`, {
-                    to: allowedTo,
-                    message,
-                  });
-                  console.log('Twilio call response:', resp.data);
-                } catch (err) {
-                  console.error('Failed to initiate Twilio call:', err);
-                  // Fallback to showing the break modal if the call fails
-                  handleTakeBreak();
-                }
-              } else {
-                // Default/else behavior: open the Take Break modal so the user can start a break immediately.
-                // This is the standard behavior used previously.
-                console.log('onMeetingEnd fired for event:', event, 'moodScore:', moodScore);
-                handleTakeBreak();
-              }
+              handleTakeBreak();
             }}
           />
         </motion.div>
